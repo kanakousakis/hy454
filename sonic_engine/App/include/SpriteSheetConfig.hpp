@@ -413,14 +413,14 @@ public:
     static constexpr unsigned char COLOR_KEY_G = 255;
     static constexpr unsigned char COLOR_KEY_B = 0;
     
-    // === RINGS (Dami-Karv verified coordinates) ===
-    // Spinning animation frames
+    // === RINGS (Python-scanned coordinates) ===
+    // Spinning animation frames - 4 frames showing ring rotation
     static AnimationDef GetRingAnimation() {
         return {"ring", {
-            {8, 25, 16, 16},    // Frame 1
-            {32, 25, 16, 16},   // Frame 2
-            {56, 25, 16, 16},   // Frame 3 (was 8px wide - fixed to 16)
-            {72, 25, 16, 16}    // Frame 4
+            {8, 25, 16, 16},    // Frame 1 - front view
+            {32, 25, 16, 16},   // Frame 2 - tilted
+            {72, 25, 16, 16},   // Frame 3 - more tilted (FIXED from x:56)
+            {96, 25, 16, 16}    // Frame 4 - side view (FIXED from x:72)
         }, true, 70};
     }
     
@@ -428,10 +428,10 @@ public:
     // Creates a quick "pop" effect as the ring is collected
     static AnimationDef GetRingCollectAnimation() {
         return {"ring_collect", {
-            {8, 25, 16, 16},   // Same as ring frames
+            {8, 25, 16, 16},   // Same as ring frames (FIXED coordinates)
             {32, 25, 16, 16},
-            {56, 25, 16, 16},
-            {72, 25, 16, 16}
+            {72, 25, 16, 16},  // FIXED from x:56
+            {96, 25, 16, 16}   // FIXED from x:72
         }, false, 30};  // Very fast animation (30ms per frame)
     }
     
