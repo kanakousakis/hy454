@@ -87,6 +87,31 @@ public:
                 // Skip already transparent pixels
                 if (pixel.a == 0) continue;
 
+                // ===== SPRITE PROTECTION =====
+                // Protect sprite content from ANY background removal
+                // Springs, rings, bright sprites, warm colors
+                bool isSpriteContent = false;
+
+                // Protect bright pixels (springs, highlights, whites)
+                if (pixel.r + pixel.g + pixel.b > 400) {
+                    isSpriteContent = true;
+                }
+                // Protect red-dominant pixels (spring red parts)
+                else if (pixel.r > 100 && pixel.r > pixel.g + 20) {
+                    isSpriteContent = true;
+                }
+                // Protect warm colors (reds, oranges, pinks - spring components)
+                else if (pixel.r > 80 && pixel.r > pixel.g && pixel.r > pixel.b + 10) {
+                    isSpriteContent = true;
+                }
+                // Protect near-whites (spring highlights)
+                else if (pixel.r > 200 && pixel.g > 200 && pixel.b > 200) {
+                    isSpriteContent = true;
+                }
+
+                // Skip all background checks if this is sprite content
+                if (isSpriteContent) continue;
+
                 bool isBackground = false;
 
                 // 1. MAGENTA (Pink) - Common in Tilesets (255, 0, 255)
