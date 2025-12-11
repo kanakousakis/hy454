@@ -174,7 +174,9 @@ protected:
     }
 };
 
-// Motobug - ground patrol enemy
+// Motobug / Motora - ground patrol enemy
+// PDF: "A bug on a motor that goes left and right. Stops for a while and turns around
+//       to continue the loop if it meets an obstacle or a cliff."
 class Motobug : public Enemy {
 private:
     float speed = 1.5f;
@@ -281,6 +283,8 @@ public:
 };
 
 // Crabmeat - shoots projectiles
+// PDF: "Move like crabs left/right till obstacle/cliff, then turn. If Sonic is close,
+//       throw two projectiles, one from each hand that follow a curved path (not targeting Sonic)"
 class Crabmeat : public Enemy {
 private:
     float speed = 0.8f;
@@ -288,271 +292,493 @@ private:
     static constexpr uint64_t SHOOT_COOLDOWN = 3000;
     bool canSeePlayer = false;
     float playerX = 0;
-    
+
+    // Projectile system - two curved projectiles (one from each claw)
+    struct Projectile {
+        float x, y;
+        float velX, velY;
+        bool active = false;
+    };
+    Projectile projectileLeft;   // From left claw
+    Projectile projectileRight;  // From right claw
+
+    static constexpr float PROJ_GRAVITY = 0.15f;  // For curved path
+    static constexpr float PROJ_SPEED_X = 3.0f;
+    static constexpr float PROJ_SPEED_Y = -4.0f;  // Initial upward velocity for arc
+
 public:
-    Crabmeat(float x, float y) 
+    Crabmeat(float x, float y)
         : Enemy(Type::Crabmeat, x, y, 48, 32) {
         facingRight = false;
         velX = -speed;
         scoreValue = 100;
     }
-    
-    void SetPlayerPosition(float px) { 
-        playerX = px; 
+
+    void SetPlayerPosition(float px) {
+        playerX = px;
         canSeePlayer = std::abs(px - posX) < 200;
     }
-    
+
     void Update() override {
         if (state == State::Dying) {
             UpdateDeathAnimation();
+            // Deactivate projectiles on death
+            projectileLeft.active = false;
+            projectileRight.active = false;
             return;
         }
-        
+
         if (state != State::Active) return;
-        
+
         uint64_t now = engine::GetSystemTime();
-        
+
         // Animate
         if (now - lastFrameTime >= 200) {
             currentFrame = (currentFrame + 1) % 2;
             lastFrameTime = now;
         }
-        
-        // Movement
+
+        // Movement - left/right until obstacle or cliff
         posX += velX;
-        
-        // Check for obstacles or cliffs
+
+        // Check for obstacles or cliffs - then turn
         if (WouldHitWall(velX) || WouldFallOff(velX)) {
             facingRight = !facingRight;
             velX = facingRight ? speed : -speed;
         }
-        
-        // Shooting logic (simplified - would need projectile system)
+
+        // PDF: "If Sonic stands close to them they throw two projectiles"
+        // Curved path projectiles (not targeting Sonic)
         if (canSeePlayer && now - lastShootTime >= SHOOT_COOLDOWN) {
             lastShootTime = now;
-            // Would spawn projectiles here
+
+            // Spawn left claw projectile (goes left with arc)
+            projectileLeft.active = true;
+            projectileLeft.x = posX - 4;
+            projectileLeft.y = posY + height / 2;
+            projectileLeft.velX = -PROJ_SPEED_X;
+            projectileLeft.velY = PROJ_SPEED_Y;
+
+            // Spawn right claw projectile (goes right with arc)
+            projectileRight.active = true;
+            projectileRight.x = posX + width + 4;
+            projectileRight.y = posY + height / 2;
+            projectileRight.velX = PROJ_SPEED_X;
+            projectileRight.velY = PROJ_SPEED_Y;
         }
+
+        // Update projectiles - curved path (parabolic arc)
+        auto updateProjectile = [&](Projectile& proj) {
+            if (!proj.active) return;
+            proj.velY += PROJ_GRAVITY;  // Gravity creates curved path
+            proj.x += proj.velX;
+            proj.y += proj.velY;
+            // Deactivate if too far or below ground
+            if (std::abs(proj.x - posX) > 250 || proj.y > posY + 200) {
+                proj.active = false;
+            }
+        };
+        updateProjectile(projectileLeft);
+        updateProjectile(projectileRight);
     }
-    
+
+    bool DamagesPlayer(const engine::Rect& playerBox, bool inBall) override {
+        if (state != State::Active) return false;
+        if (inBall) return false;
+
+        // Body collision
+        if (CollidesWith(playerBox)) return true;
+
+        // Check projectile collisions
+        auto checkProjectileHit = [&](const Projectile& proj) -> bool {
+            if (!proj.active) return false;
+            engine::Rect projBox = {static_cast<int>(proj.x) - 4, static_cast<int>(proj.y) - 4, 8, 8};
+            return playerBox.x < projBox.x + projBox.w && playerBox.x + playerBox.w > projBox.x &&
+                   playerBox.y < projBox.y + projBox.h && playerBox.y + playerBox.h > projBox.y;
+        };
+
+        if (checkProjectileHit(projectileLeft)) {
+            projectileLeft.active = false;
+            return true;
+        }
+        if (checkProjectileHit(projectileRight)) {
+            projectileRight.active = false;
+            return true;
+        }
+        return false;
+    }
+
     void Render(const engine::Rect& viewWindow) override {
         auto& gfx = engine::GetGraphics();
-        
+
         int screenX = static_cast<int>(posX) - viewWindow.x;
         int screenY = static_cast<int>(posY) - viewWindow.y;
-        
+
         if (screenX + width < 0 || screenX > viewWindow.w ||
             screenY + height < 0 || screenY > viewWindow.h) {
             return;
         }
-        
-        engine::Color bodyColor = state == State::Dying ? 
+
+        engine::Color bodyColor = state == State::Dying ?
             engine::MakeColor(255, 150, 150) : engine::MakeColor(255, 100, 50);
-        
+
         // Body
         gfx.DrawRect({screenX + 8, screenY + 8, width - 16, height - 8}, bodyColor, true);
-        
-        // Claws
+
+        // Claws (animate open/close)
         int clawOffset = (currentFrame == 0) ? 0 : 4;
         gfx.DrawRect({screenX, screenY + 10 - clawOffset, 12, 16}, bodyColor, true);
         gfx.DrawRect({screenX + width - 12, screenY + 10 + clawOffset, 12, 16}, bodyColor, true);
-        
+
         // Eyes
         gfx.DrawRect({screenX + 14, screenY + 4, 6, 6}, engine::MakeColor(255, 255, 255), true);
         gfx.DrawRect({screenX + width - 20, screenY + 4, 6, 6}, engine::MakeColor(255, 255, 255), true);
-        
+
+        // Draw projectiles (energy balls)
+        auto drawProjectile = [&](const Projectile& proj) {
+            if (!proj.active) return;
+            int px = static_cast<int>(proj.x) - viewWindow.x;
+            int py = static_cast<int>(proj.y) - viewWindow.y;
+            // Yellow energy ball
+            gfx.DrawRect({px - 4, py - 4, 8, 8}, engine::MakeColor(255, 200, 0), true);
+            gfx.DrawRect({px - 2, py - 2, 4, 4}, engine::MakeColor(255, 255, 200), true);
+        };
+        drawProjectile(projectileLeft);
+        drawProjectile(projectileRight);
+
         // Border
         gfx.DrawRect({screenX, screenY, width, height}, engine::MakeColor(0, 0, 0), false);
     }
 };
 
-// BuzzBomber - Flying bee enemy that patrols and fires projectiles
+// BuzzBomber - Flying bee enemy
+// PDF: "Fly toward Sonic, fire projectile at Sonic's feet. If not killed, fly off screen then flip.
+//       If Sonic skips them (1 tile away), reset. Don't chase if Sonic moves too fast."
 class BuzzBomber : public Enemy {
 private:
+    enum class BuzzState { Patrol, Attacking, FlyingAway, Resetting };
+    BuzzState buzzState = BuzzState::Patrol;
+
     float speed = 2.0f;
-    float homeY = 0;  // Base Y position to hover around
+    float homeX = 0;  // Spawn position for reset
+    float homeY = 0;
     float hoverOffset = 0;
     float hoverSpeed = 0.05f;
-    
+
     float playerX = 0;
     float playerY = 0;
     bool canSeePlayer = false;
-    
+
     uint64_t lastShootTime = 0;
     static constexpr uint64_t SHOOT_COOLDOWN = 2500;
     static constexpr int FRAME_COUNT = 2;
-    static constexpr uint64_t FRAME_DELAY = 80;  // Fast wing flapping
-    
+    static constexpr uint64_t FRAME_DELAY = 80;
+
+    // Projectile that targets Sonic's feet
+    struct Projectile {
+        float x, y;
+        float velX, velY;
+        float targetX, targetY;  // Target position (Sonic's feet)
+        bool active = false;
+    };
+    Projectile projectile;
+
+    // Reset distance - PDF says "1 tile away" (tile = ~128px in this engine)
+    static constexpr float RESET_DISTANCE = 256.0f;  // 2 tiles for better gameplay
+
     // Patrol bounds
     float patrolLeft = 0;
     float patrolRight = 0;
-    
+
 public:
-    BuzzBomber(float x, float y, float patrolRange = 200.0f) 
+    BuzzBomber(float x, float y, float patrolRange = 200.0f)
         : Enemy(Type::BuzzBomber, x, y, 46, 32) {
+        homeX = x;
         homeY = y;
         facingRight = false;
         velX = -speed;
         scoreValue = 100;
-        
+
         patrolLeft = x - patrolRange / 2;
         patrolRight = x + patrolRange / 2;
     }
-    
-    void SetPlayerPosition(float px, float py) { 
+
+    void SetPlayerPosition(float px, float py) {
         playerX = px;
         playerY = py;
         float dist = std::sqrt((px - posX) * (px - posX) + (py - posY) * (py - posY));
         canSeePlayer = dist < 250;
+
+        // PDF: "If Sonic skips them by moving too fast... they reset"
+        float distFromHome = std::abs(px - homeX);
+        if (distFromHome > RESET_DISTANCE && buzzState != BuzzState::Resetting) {
+            buzzState = BuzzState::Resetting;
+        }
     }
-    
+
     void Update() override {
         if (state == State::Dying) {
             UpdateDeathAnimation();
+            projectile.active = false;
             return;
         }
-        
+
         if (state != State::Active) return;
-        
+
         uint64_t now = engine::GetSystemTime();
-        
-        // Wing animation (fast)
+
+        // Wing animation
         if (now - lastFrameTime >= FRAME_DELAY) {
             currentFrame = (currentFrame + 1) % FRAME_COUNT;
             lastFrameTime = now;
         }
-        
-        // Hover movement
-        hoverOffset += hoverSpeed;
-        posY = homeY + std::sin(hoverOffset) * 10.0f;
-        
-        // Horizontal patrol
-        posX += velX;
-        
-        // Turn around at patrol bounds
-        if (posX <= patrolLeft) {
-            posX = patrolLeft;
-            facingRight = true;
-            velX = speed;
-        } else if (posX >= patrolRight) {
-            posX = patrolRight;
-            facingRight = false;
-            velX = -speed;
+
+        switch (buzzState) {
+            case BuzzState::Patrol:
+                // Normal patrol behavior
+                hoverOffset += hoverSpeed;
+                posY = homeY + std::sin(hoverOffset) * 10.0f;
+                posX += velX;
+
+                // Turn at patrol bounds
+                if (posX <= patrolLeft) {
+                    posX = patrolLeft;
+                    facingRight = true;
+                    velX = speed;
+                } else if (posX >= patrolRight) {
+                    posX = patrolRight;
+                    facingRight = false;
+                    velX = -speed;
+                }
+
+                // PDF: "fly toward Sonic and fire projectile at Sonic's feet"
+                if (canSeePlayer && playerY > posY) {
+                    buzzState = BuzzState::Attacking;
+                    facingRight = (playerX > posX);
+                }
+                break;
+
+            case BuzzState::Attacking:
+                // Fly toward player
+                facingRight = (playerX > posX);
+                velX = facingRight ? speed : -speed;
+                posX += velX;
+
+                // Slight hover
+                hoverOffset += hoverSpeed;
+                posY = homeY + std::sin(hoverOffset) * 5.0f;
+
+                // Fire at Sonic's feet when close
+                if (std::abs(playerX - posX) < 80 && now - lastShootTime >= SHOOT_COOLDOWN) {
+                    lastShootTime = now;
+
+                    // PDF: "fire a projectile that is targeted at sonic's feet"
+                    projectile.active = true;
+                    projectile.x = posX + width / 2;
+                    projectile.y = posY + height;
+                    projectile.targetX = playerX;
+                    projectile.targetY = playerY + 32;  // Target feet area
+
+                    // Calculate velocity toward target
+                    float dx = projectile.targetX - projectile.x;
+                    float dy = projectile.targetY - projectile.y;
+                    float dist = std::sqrt(dx * dx + dy * dy);
+                    if (dist > 0) {
+                        float projSpeed = 4.0f;
+                        projectile.velX = (dx / dist) * projSpeed;
+                        projectile.velY = (dy / dist) * projSpeed;
+                    }
+
+                    // After shooting, fly away
+                    buzzState = BuzzState::FlyingAway;
+                }
+                break;
+
+            case BuzzState::FlyingAway:
+                // PDF: "fly till they go off screen then they flip"
+                posX += velX * 1.5f;  // Fly faster when leaving
+
+                // Check if off screen (simplified check)
+                if (posX < homeX - 400 || posX > homeX + 400) {
+                    // Flip and try again
+                    facingRight = !facingRight;
+                    velX = facingRight ? speed : -speed;
+                    buzzState = BuzzState::Patrol;
+                    posY = homeY;
+                }
+                break;
+
+            case BuzzState::Resetting:
+                // PDF: "they don't try to chase him, instead they reset"
+                // Return to home position
+                float dx = homeX - posX;
+                float dy = homeY - posY;
+                float dist = std::sqrt(dx * dx + dy * dy);
+
+                if (dist < 5.0f) {
+                    posX = homeX;
+                    posY = homeY;
+                    buzzState = BuzzState::Patrol;
+                    facingRight = false;
+                    velX = -speed;
+                } else {
+                    // Fly back home
+                    posX += (dx / dist) * speed;
+                    posY += (dy / dist) * speed;
+                }
+                break;
         }
-        
-        // Stop and shoot if player is below
-        if (canSeePlayer && playerY > posY && std::abs(playerX - posX) < 80) {
-            velX = 0;  // Hover in place
-            
-            if (now - lastShootTime >= SHOOT_COOLDOWN) {
-                lastShootTime = now;
-                // Fire projectile downward (would spawn projectile here)
+
+        // Update projectile
+        if (projectile.active) {
+            projectile.x += projectile.velX;
+            projectile.y += projectile.velY;
+            // Deactivate if past target or too far
+            if (projectile.y > playerY + 100 || std::abs(projectile.x - homeX) > 400) {
+                projectile.active = false;
             }
-        } else {
-            // Resume patrol
-            velX = facingRight ? speed : -speed;
         }
     }
-    
+
+    bool DamagesPlayer(const engine::Rect& playerBox, bool inBall) override {
+        if (state != State::Active) return false;
+        if (inBall) return false;
+
+        // Body collision
+        if (CollidesWith(playerBox)) return true;
+
+        // Projectile collision
+        if (projectile.active) {
+            engine::Rect projBox = {static_cast<int>(projectile.x) - 4, static_cast<int>(projectile.y) - 4, 8, 8};
+            if (playerBox.x < projBox.x + projBox.w && playerBox.x + playerBox.w > projBox.x &&
+                playerBox.y < projBox.y + projBox.h && playerBox.y + playerBox.h > projBox.y) {
+                projectile.active = false;
+                return true;
+            }
+        }
+        return false;
+    }
+
     void Render(const engine::Rect& viewWindow) override {
         auto& gfx = engine::GetGraphics();
-        
+
         int screenX = static_cast<int>(posX) - viewWindow.x;
         int screenY = static_cast<int>(posY) - viewWindow.y;
-        
+
         if (screenX + width < 0 || screenX > viewWindow.w ||
             screenY + height < 0 || screenY > viewWindow.h) {
             return;
         }
-        
-        engine::Color bodyColor = state == State::Dying ? 
-            engine::MakeColor(255, 200, 100) : engine::MakeColor(255, 200, 0);  // Yellow
-        engine::Color stripeColor = engine::MakeColor(40, 40, 40);  // Black stripes
-        
-        // Body (oval shape approximated)
+
+        engine::Color bodyColor = state == State::Dying ?
+            engine::MakeColor(255, 200, 100) : engine::MakeColor(255, 200, 0);
+        engine::Color stripeColor = engine::MakeColor(40, 40, 40);
+
+        // Body
         gfx.DrawRect({screenX + 8, screenY + 10, width - 16, height - 14}, bodyColor, true);
-        
+
         // Stripes
         gfx.DrawRect({screenX + 14, screenY + 12, width - 28, 4}, stripeColor, true);
         gfx.DrawRect({screenX + 14, screenY + 20, width - 28, 4}, stripeColor, true);
-        
+
         // Head
         int headX = facingRight ? screenX + width - 16 : screenX;
         gfx.DrawRect({headX, screenY + 8, 16, 16}, bodyColor, true);
-        
+
         // Eyes
         int eyeX = facingRight ? headX + 8 : headX + 2;
-        gfx.DrawRect({eyeX, screenY + 10, 6, 6}, engine::MakeColor(255, 0, 0), true);  // Red eyes
-        
-        // Wings (animate up/down)
+        gfx.DrawRect({eyeX, screenY + 10, 6, 6}, engine::MakeColor(255, 0, 0), true);
+
+        // Wings (animate)
         int wingY = (currentFrame == 0) ? screenY : screenY + 4;
-        gfx.DrawRect({screenX + 12, wingY - 6, 22, 8}, 
-                     engine::MakeColor(200, 200, 255, 180), true);  // Translucent wings
-        
+        gfx.DrawRect({screenX + 12, wingY - 6, 22, 8},
+                     engine::MakeColor(200, 200, 255, 180), true);
+
         // Stinger
         int stingerX = facingRight ? screenX - 4 : screenX + width;
         gfx.DrawRect({stingerX, screenY + height/2, 6, 3}, stripeColor, true);
-        
+
+        // Projectile (targeting Sonic's feet)
+        if (projectile.active) {
+            int px = static_cast<int>(projectile.x) - viewWindow.x;
+            int py = static_cast<int>(projectile.y) - viewWindow.y;
+            gfx.DrawRect({px - 4, py - 4, 8, 8}, engine::MakeColor(255, 100, 0), true);
+            gfx.DrawRect({px - 2, py - 2, 4, 4}, engine::MakeColor(255, 200, 100), true);
+        }
+
         // Border
         gfx.DrawRect({screenX, screenY, width, height}, engine::MakeColor(0, 0, 0), false);
     }
 };
 
-// Masher - Jumping piranha enemy (jumps from water/ground)
+// Masher - Jumping piranha enemy (jumps from water/bridges)
+// PDF: "go up and down, max height 64 pixels above bridge, lowest just beneath screen"
 class Masher : public Enemy {
 private:
-    float jumpForce = -12.0f;
-    float gravity = 0.4f;
-    float homeY = 0;  // Starting position (water surface)
-    
+    float jumpForce = -8.0f;  // Adjusted for 64px max height
+    float gravity = 0.5f;
+    float homeY = 0;  // Starting position (water/bridge surface)
+
     bool isJumping = false;
     uint64_t lastJumpTime = 0;
     uint64_t jumpCooldown = 2000;  // Time between jumps
-    
+
     float playerX = 0;
     bool playerNearby = false;
-    
+
+    // PDF constraint: max 64 pixels above bridge
+    static constexpr float MAX_JUMP_HEIGHT = 64.0f;
+    float maxY = 0;  // Maximum Y position (minimum screen position since Y increases downward)
+
     static constexpr int FRAME_COUNT = 2;
     static constexpr uint64_t FRAME_DELAY = 100;
-    
+
 public:
-    Masher(float x, float y, uint64_t cooldown = 2000) 
+    Masher(float x, float y, uint64_t cooldown = 2000)
         : Enemy(Type::Masher, x, y, 24, 40) {
         homeY = y;
+        maxY = homeY - MAX_JUMP_HEIGHT;  // 64 pixels above home position
         jumpCooldown = cooldown;
         scoreValue = 100;
         velY = 0;
     }
-    
-    void SetPlayerPosition(float px) { 
+
+    void SetPlayerPosition(float px) {
         playerX = px;
         playerNearby = std::abs(px - posX) < 150;
     }
-    
+
     void Update() override {
         if (state == State::Dying) {
             UpdateDeathAnimation();
             return;
         }
-        
+
         if (state != State::Active) return;
-        
+
         uint64_t now = engine::GetSystemTime();
-        
+
         // Animate
         if (now - lastFrameTime >= FRAME_DELAY) {
             currentFrame = (currentFrame + 1) % FRAME_COUNT;
             lastFrameTime = now;
         }
-        
+
         if (isJumping) {
             // Apply gravity
             velY += gravity;
             posY += velY;
-            
+
+            // PDF: Constrain to max 64 pixels above bridge
+            if (posY < maxY) {
+                posY = maxY;
+                velY = 0;  // Stop upward momentum at peak
+            }
+
             // Face toward player while jumping
             facingRight = playerX > posX;
-            
-            // Back to home position
+
+            // Back to home position (lowest point - just beneath screen/bridge)
             if (posY >= homeY) {
                 posY = homeY;
                 velY = 0;

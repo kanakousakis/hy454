@@ -1294,22 +1294,42 @@ void PlaceGameObjects() {
     ringManager.AddRing(2850.0f, 1630.0f);
     ringManager.AddRing(2900.0f, 1630.0f);
     
-    // Add enemies - ground surface is at y=1664
-    // Enemies stand ON ground, so position = 1664 - enemy_height
-    enemyManager.AddMotobug(600.0f, 1632.0f);    // 32px tall
+    // ================================================================
+    // PDF ENEMIES - The four required enemies from the PDF document:
+    // 1. Masher (Piranha) - jumps up/down, max 64px height
+    // 2. Crabmeat - moves left/right, shoots curved projectiles
+    // 3. Buzz Bomber - flies toward Sonic, shoots at feet, resets
+    // 4. Motobug/Motora - moves left/right, pauses at obstacles
+    // ================================================================
+
+    // Ground surface is at y=1664
+    // Enemies stand ON ground, so position = 1664 - enemy_height (~1632)
+
+    // === MOTOBUG/MOTORA (PDF Enemy #4) ===
+    // "Goes left and right, stops for a while and turns at obstacle/cliff"
+    enemyManager.AddMotobug(350.0f, 1632.0f);     // Near spawn - easy to test
+    enemyManager.AddMotobug(600.0f, 1632.0f);
     enemyManager.AddMotobug(1800.0f, 1632.0f);
     enemyManager.AddMotobug(4000.0f, 1632.0f);
+
+    // === CRABMEAT (PDF Enemy #2) ===
+    // "Moves left/right, throws two curved projectiles when Sonic is close"
+    enemyManager.AddCrabmeat(450.0f, 1632.0f);    // Near spawn - test projectiles
     enemyManager.AddCrabmeat(1200.0f, 1632.0f);
     enemyManager.AddCrabmeat(3500.0f, 1632.0f);
-    
-    // Add BuzzBombers (flying enemies)
-    enemyManager.AddBuzzBomber(700.0f, 1500.0f, 300.0f);   // Patrols 300px range
+
+    // === BUZZ BOMBER (PDF Enemy #3) ===
+    // "Flies toward Sonic, fires at feet, flies off screen then flips, resets if Sonic skips"
+    enemyManager.AddBuzzBomber(500.0f, 1500.0f, 300.0f);   // Near spawn for testing
+    enemyManager.AddBuzzBomber(700.0f, 1500.0f, 300.0f);
     enemyManager.AddBuzzBomber(2000.0f, 1400.0f, 250.0f);
     enemyManager.AddBuzzBomber(3800.0f, 1450.0f, 200.0f);
-    
-    // Add Mashers (jumping piranha enemies) - placed at pit edges
-    enemyManager.AddMasher(2900.0f, 1700.0f, 1500);  // Jump every 1.5 seconds (below ground in pit)
-    enemyManager.AddMasher(5700.0f, 1700.0f, 2000);  // Jump every 2 seconds
+
+    // === MASHER (PDF Enemy #1) ===
+    // "Piranhas go up/down, max 64px above bridge, lowest just beneath screen"
+    enemyManager.AddMasher(550.0f, 1700.0f, 1500);  // Near spawn for easy testing
+    enemyManager.AddMasher(2900.0f, 1700.0f, 1500);  // Near first pit
+    enemyManager.AddMasher(5700.0f, 1700.0f, 2000);  // Later in level
     
     // === NEW ENEMY TYPES ===
     enemyManager.AddNewtronBlue(1400.0f, 1632.0f);
