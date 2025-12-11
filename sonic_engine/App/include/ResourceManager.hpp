@@ -94,10 +94,10 @@ public:
                     isBackground = true;
                 }
 
-                // 2. WHITE - Pure white (preserve for glowing effects like shields, sparkles)
-                // IMPORTANT: Don't remove pure white pixels
-                else if (pixel.r >= 250 && pixel.g >= 250 && pixel.b >= 250) {
-                    isBackground = false; // Keep white
+                // 2. WHITE/GREY backgrounds - Remove light backgrounds
+                // Pure white and light grey are backgrounds (NOT sprite content)
+                else if (pixel.r >= 240 && pixel.g >= 240 && pixel.b >= 240) {
+                    isBackground = true; // Remove white/grey backgrounds
                 }
 
                 // 3. AGGRESSIVE GREEN DETECTION - Any pixel that's predominantly green
