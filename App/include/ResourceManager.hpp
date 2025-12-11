@@ -111,6 +111,16 @@ public:
                     isBackground = true;
                 }
 
+                // 5. INTELLIGENT GREEN DETECTION - Distinguishes green from yellow
+                // Yellow rings: R≈G (both high), B low  →  KEEP
+                // Green background: G >> R              →  REMOVE
+                // Logic: If green is much higher than red, it's a green background
+                else if (pixel.r < pixel.g - 30 && pixel.g > 80 && pixel.b < pixel.g - 20) {
+                    // G is 30+ points higher than R, and B is also low
+                    // This is GREEN background, not yellow sprite
+                    isBackground = true;
+                }
+
                 if (isBackground) {
                     img.setPixel(x, y, sf::Color::Transparent);
                     transparentCount++;
