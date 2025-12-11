@@ -71,8 +71,8 @@ public:
     }
     
     // Apply color key to make backgrounds transparent
-    // IMPORTANT: Be very precise to avoid making dark sprite pixels transparent!
-    // Only target specific background colors used in the sprite sheets.
+    // ONLY removes exact background colors - green and magenta
+    // NO fuzzy matching to avoid making sprite pixels transparent!
     void ApplyMultipleColorKeys(engine::BitmapPtr& bmp) {
         if (!bmp) return;
 
@@ -86,36 +86,29 @@ public:
 
                 bool isBackground = false;
 
-                // 1. MAGENTA (Pink) - Common in Tilesets (255, 0, 255)
-                if (pixel.r > 240 && pixel.g < 15 && pixel.b > 240) {
+                // ONLY exact matches for known background colors:
+
+                // 1. Pure MAGENTA (255, 0, 255) - exact match only
+                if (pixel.r == 255 && pixel.g == 0 && pixel.b == 255) {
                     isBackground = true;
                 }
 
-                // 2. Medium Green (0, 128, 0) - Used in misc/enemies sheets
-                // Very specific: green must be around 128, red and blue very low
-                else if (pixel.r < 15 && pixel.g >= 115 && pixel.g <= 140 && pixel.b < 15) {
+                // 2. Pure GREEN (0, 255, 0) - exact match only
+                else if (pixel.r == 0 && pixel.g == 255 && pixel.b == 0) {
                     isBackground = true;
                 }
 
-                // 3. Pure Green (0, 255, 0) - Bright chroma key green
-                else if (pixel.r < 20 && pixel.g > 220 && pixel.b < 20) {
+                // 3. Medium Green (0, 128, 0) - exact match with tiny tolerance
+                else if (pixel.r == 0 && pixel.g == 128 && pixel.b == 0) {
                     isBackground = true;
                 }
 
-                // 4. Lighter Green key (147, 187, 148) - Sonic sheet background
-                // This is a specific pastel green used in classic Sonic sheets
-                else if (pixel.r >= 140 && pixel.r <= 155 &&
-                         pixel.g >= 180 && pixel.g <= 195 &&
-                         pixel.b >= 140 && pixel.b <= 155) {
+                // 4. Sonic sheet green background (148, 188, 148) - exact match
+                else if (pixel.r == 148 && pixel.g == 188 && pixel.b == 148) {
                     isBackground = true;
                 }
-
-                // 5. Specific dark green background (48, 64, 48) variant
-                // Only match if it's clearly a green-tinted background, NOT dark sprite pixels
-                // Require green to be at least 50 AND significantly higher than red/blue
-                else if (pixel.g >= 50 && pixel.g <= 80 &&
-                         pixel.r < pixel.g - 15 && pixel.b < pixel.g - 15 &&
-                         pixel.r < 40 && pixel.b < 40) {
+                // Slight variant (147, 187, 148)
+                else if (pixel.r == 147 && pixel.g == 187 && pixel.b == 148) {
                     isBackground = true;
                 }
 

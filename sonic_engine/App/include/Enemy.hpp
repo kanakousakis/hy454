@@ -245,6 +245,13 @@ public:
         int screenX = static_cast<int>(posX) - viewWindow.x;
         int screenY = static_cast<int>(posY) - viewWindow.y;
 
+        // DEBUG: Always log position
+        static int debugCount = 0;
+        if (++debugCount % 60 == 0) {  // Log every 60 frames
+            std::cout << "[Motobug] pos=(" << posX << "," << posY << ") screen=(" << screenX << "," << screenY
+                      << ") view=(" << viewWindow.x << "," << viewWindow.y << "," << viewWindow.w << "," << viewWindow.h << ")" << std::endl;
+        }
+
         // Skip if off screen
         if (screenX + width < 0 || screenX > viewWindow.w ||
             screenY + height < 0 || screenY > viewWindow.h) {
@@ -253,6 +260,9 @@ public:
 
         // Try to use sprite animation
         auto* film = ResourceManager::Instance().GetFilm("motobug_move");
+        if (debugCount % 60 == 0) {
+            std::cout << "[Motobug] Rendering! film=" << (film ? "OK" : "NULL") << std::endl;
+        }
         if (film && film->GetTotalFrames() > 0) {
             int frameIdx = currentFrame % film->GetTotalFrames();
             engine::Rect frameBox = film->GetFrameBox(static_cast<engine::byte>(frameIdx));
