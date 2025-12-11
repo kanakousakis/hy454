@@ -71,57 +71,103 @@ public:
     }
     
     // Apply color key to make backgrounds transparent
-    // Handles: Magenta (tiles), Dark Green (Sonic/misc), Pure Green, Medium Green
+    // Handles: Magenta (tiles), All Green shades (Sonic/misc/enemies)
+    // AGGRESSIVE green removal to prevent green halos on rings and other sprites
     void ApplyMultipleColorKeys(engine::BitmapPtr& bmp) {
         if (!bmp) return;
-        
+
         sf::Image& img = bmp->GetImage();
         auto size = img.getSize();
-        
+
         int transparentCount = 0;
         for (unsigned y = 0; y < size.y; ++y) {
             for (unsigned x = 0; x < size.x; ++x) {
                 sf::Color pixel = img.getPixel(x, y);
-                
+
+                // Skip already transparent pixels
+                if (pixel.a == 0) continue;
+
                 bool isBackground = false;
-                
+
                 // 1. MAGENTA (Pink) - Common in Tilesets (255, 0, 255)
                 if (pixel.r > 240 && pixel.g < 15 && pixel.b > 240) {
                     isBackground = true;
                 }
-                
-                // 2. Medium Green (0, 128, 0) - Used in misc/enemies sheets
-                // This is the EXACT color key for spikes and other misc items
-                else if (pixel.r < 20 && pixel.g >= 120 && pixel.g <= 140 && pixel.b < 20) {
+
+                // 2. WHITE - Pure white (preserve for glowing effects like shields, sparkles)
+                // IMPORTANT: Don't remove pure white pixels
+                else if (pixel.r >= 250 && pixel.g >= 250 && pixel.b >= 250) {
+                    isBackground = false; // Keep white
+                }
+
+                // 3. AGGRESSIVE GREEN DETECTION - Any pixel that's predominantly green
+                // This catches ALL green shades including halos around rings
+                else if (pixel.g > pixel.r + 15 && pixel.g > pixel.b + 15 && pixel.g > 20) {
+                    // Green channel is significantly higher than red and blue
+                    // This is a green-ish background pixel - remove it
                     isBackground = true;
                 }
-                
-                // 3. Dark Green used in some Sonic sheets (darker variant)
-                else if (pixel.r < 60 && pixel.g > 25 && pixel.g < 90 && pixel.b < 60 &&
+
+                // 4. Medium Green (0, 128, 0) - Standard green screen (WIDENED RANGE)
+                else if (pixel.r < 30 && pixel.g >= 100 && pixel.g <= 160 && pixel.b < 30) {
+                    isBackground = true;
+                }
+
+                // 5. Pure Green (0, 255, 0) and bright greens (WIDENED RANGE)
+                else if (pixel.r < 40 && pixel.g > 180 && pixel.b < 40) {
+                    isBackground = true;
+                }
+
+                // 6. Lighter Green key (147, 187, 148 variant) - Sonic sheet (WIDENED RANGE)
+                else if (pixel.r >= 130 && pixel.r <= 165 &&
+                    pixel.g >= 170 && pixel.g <= 205 &&
+                    pixel.b >= 130 && pixel.b <= 165) {
+                    isBackground = true;
+                }
+
+                // 7. Dark greens (any shade) - Catch darker green variants
+                else if (pixel.r < 70 && pixel.g > 30 && pixel.g < 120 && pixel.b < 70 &&
                     pixel.g > pixel.r && pixel.g > pixel.b) {
                     isBackground = true;
                 }
-                
-                // 4. Pure Green (0, 255, 0)
-                else if (pixel.r < 30 && pixel.g > 200 && pixel.b < 30) {
-                    isBackground = true;
-                }
-                
-                // 5. Lighter Green key (147, 187, 148 variant) - Sonic sheet
-                else if (pixel.r >= 140 && pixel.r <= 155 &&
-                    pixel.g >= 180 && pixel.g <= 195 &&
-                    pixel.b >= 140 && pixel.b <= 155) {
-                    isBackground = true;
-                }
-                
+
                 if (isBackground) {
                     img.setPixel(x, y, sf::Color::Transparent);
                     transparentCount++;
                 }
             }
         }
-        
-        std::cout << "    Made " << transparentCount << " pixels transparent" << std::endl;
+
+        // SECOND PASS: Clean up edge artifacts (semi-transparent green pixels)
+        // This catches anti-aliased green edges that blend with sprites
+        int edgeCleanupCount = 0;
+        for (unsigned y = 0; y < size.y; ++y) {
+            for (unsigned x = 0; x < size.x; ++x) {
+                sf::Color pixel = img.getPixel(x, y);
+
+                // Skip already transparent
+                if (pixel.a == 0) continue;
+
+                // If pixel has any green tint and low opacity, it's likely an edge artifact
+                if (pixel.a < 255 && pixel.g > pixel.r + 10 && pixel.g > pixel.b + 10) {
+                    img.setPixel(x, y, sf::Color::Transparent);
+                    edgeCleanupCount++;
+                }
+                // Also remove semi-opaque greenish pixels
+                else if (pixel.a < 200 && pixel.g > 100 &&
+                         pixel.g > pixel.r && pixel.g > pixel.b) {
+                    img.setPixel(x, y, sf::Color::Transparent);
+                    edgeCleanupCount++;
+                }
+            }
+        }
+
+        std::cout << "    Made " << transparentCount << " pixels transparent";
+        if (edgeCleanupCount > 0) {
+            std::cout << " (+" << edgeCleanupCount << " edge cleanup)";
+        }
+        std::cout << std::endl;
+
         bmp->UpdateTexture();
     }
     
