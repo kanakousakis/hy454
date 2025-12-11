@@ -32,7 +32,11 @@ void SonicPlayer::Create(float startX, float startY, engine::GridLayer* grid) {
 }
 
 int SonicPlayer::GetCurrentHeight() const {
-    return IsBallState() ? ballHeight : height;
+    // Ball states and Crouching use smaller hitbox
+    if (IsBallState() || state == SonicState::Crouching) {
+        return ballHeight;
+    }
+    return height;
 }
 
 bool SonicPlayer::IsBallState() const {

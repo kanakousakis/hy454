@@ -165,27 +165,37 @@ public:
 
                 // 12. ULTRA-AGGRESSIVE: Very subtle green tint (lower threshold)
                 // Any pixel with even slight green dominance
+                // BUT protect springs: bright pixels, reds, warm colors
                 else if (pixel.g > pixel.r + 5 && pixel.g > pixel.b + 5 &&
                          pixel.g > 40 && pixel.g < 220 &&
-                         !(pixel.r > 180 && pixel.g > 180 && pixel.b < 100)) {
-                    // Even subtle green dominance = remove (except yellow rings)
+                         !(pixel.r > 180 && pixel.g > 180 && pixel.b < 100) &&
+                         !(pixel.r + pixel.g + pixel.b > 400) &&
+                         !(pixel.r > 150 && pixel.r > pixel.g)) {
+                    // Even subtle green dominance = remove
+                    // Exclude: yellow rings (high R+G), bright pixels (springs), red-dominant (springs)
                     isBackground = true;
                 }
 
                 // 13. ULTRA-AGGRESSIVE: Dark greenish pixels (any darkness with green tint)
+                // BUT protect any pixel where red is significant (springs have red)
                 else if (pixel.g > pixel.r && pixel.g > pixel.b &&
                          (pixel.r + pixel.g + pixel.b) < 120 &&
-                         pixel.g > 15) {
-                    // Dark pixel with any green dominance
+                         pixel.g > 15 &&
+                         pixel.r < 40) {
+                    // Dark pixel with green dominance and low red = background
+                    // If red > 40, might be spring edge, keep it
                     isBackground = true;
                 }
 
                 // 14. ULTRA-AGGRESSIVE: Grayish-green mid-tones
+                // BUT protect pixels near white or with red component (springs)
                 else if (pixel.r >= 60 && pixel.r <= 100 &&
                          pixel.g >= 80 && pixel.g <= 140 &&
                          pixel.b >= 60 && pixel.b <= 100 &&
-                         pixel.g > pixel.r + 5 && pixel.g > pixel.b + 5) {
-                    // Mid-tone gray with green bias
+                         pixel.g > pixel.r + 5 && pixel.g > pixel.b + 5 &&
+                         (pixel.r + pixel.g + pixel.b) < 320) {
+                    // Mid-tone gray with green bias and not too bright
+                    // Bright versions might be spring highlights
                     isBackground = true;
                 }
 
