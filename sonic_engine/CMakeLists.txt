@@ -26,6 +26,8 @@ set(ENGINE_SOURCES
     Engine/src/GridLayer.cpp
     Engine/src/Animator.cpp
     Engine/src/AnimationFilm.cpp
+    Engine/src/DestructionManager.cpp
+    Engine/src/Sprite.cpp
 )
 
 # Create engine library
@@ -34,7 +36,10 @@ target_include_directories(SonicEngineLib PUBLIC Engine/include)
 target_link_libraries(SonicEngineLib PUBLIC sfml-graphics sfml-window sfml-system)
 
 # Create executable
-add_executable(SonicGame App/src/main.cpp)
+add_executable(SonicGame
+    App/src/main.cpp
+    App/src/SonicPlayer.cpp
+)
 target_include_directories(SonicGame PRIVATE App/include)
 target_link_libraries(SonicGame PRIVATE SonicEngineLib)
 
