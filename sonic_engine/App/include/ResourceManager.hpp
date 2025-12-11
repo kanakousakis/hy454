@@ -105,9 +105,15 @@ public:
 
                 // 3. AGGRESSIVE GREEN DETECTION - Any pixel that's predominantly green
                 // This catches ALL green shades including halos around rings
-                else if (pixel.g > pixel.r + 15 && pixel.g > pixel.b + 15 && pixel.g > 20) {
-                    // Green channel is significantly higher than red and blue
+                // VERY AGGRESSIVE: Even slight green tint = background
+                else if (pixel.g > pixel.r + 5 && pixel.g > pixel.b + 5 && pixel.g > 15) {
+                    // Green channel is higher than red and blue (even slightly)
                     // This is a green-ish background pixel - remove it
+                    isBackground = true;
+                }
+
+                // 3b. ANY greenish pixel (backup catch-all for stubborn greens)
+                else if (pixel.g > 50 && pixel.g > pixel.r && pixel.g > pixel.b) {
                     isBackground = true;
                 }
 
