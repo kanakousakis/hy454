@@ -103,17 +103,12 @@ public:
                     isBackground = true; // Remove white/grey/beige backgrounds
                 }
 
-                // 3. AGGRESSIVE GREEN DETECTION - Any pixel that's predominantly green
-                // This catches ALL green shades including halos around rings
-                // VERY AGGRESSIVE: Even slight green tint = background
-                else if (pixel.g > pixel.r + 5 && pixel.g > pixel.b + 5 && pixel.g > 15) {
-                    // Green channel is higher than red and blue (even slightly)
-                    // This is a green-ish background pixel - remove it
-                    isBackground = true;
-                }
-
-                // 3b. ANY greenish pixel (backup catch-all for stubborn greens)
-                else if (pixel.g > 50 && pixel.g > pixel.r && pixel.g > pixel.b) {
+                // 3. BALANCED GREEN DETECTION - Targets green backgrounds without destroying yellow rings
+                // Rings are YELLOW (high R+G, low B), so we check: G > R+12 AND G > B+25
+                // This ensures we only remove TRUE green (not yellow) pixels
+                else if (pixel.g > pixel.r + 12 && pixel.g > pixel.b + 25 && pixel.g > 30) {
+                    // Green is significantly higher than red AND much higher than blue
+                    // This is green background, NOT yellow ring content
                     isBackground = true;
                 }
 
