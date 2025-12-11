@@ -121,6 +121,18 @@ public:
                     isBackground = true;
                 }
 
+                // 6. BLACK and NEAR-BLACK edge artifacts (common sprite edge issue)
+                else if (pixel.r < 15 && pixel.g < 15 && pixel.b < 15) {
+                    isBackground = true;
+                }
+
+                // 7. DARK GREEN edge artifacts (greenish but very dark)
+                else if (pixel.g > pixel.r + 8 && pixel.g > pixel.b + 8 &&
+                         pixel.g < 40 && pixel.r < 30 && pixel.b < 30) {
+                    // Green channel is dominant but overall very dark
+                    isBackground = true;
+                }
+
                 if (isBackground) {
                     img.setPixel(x, y, sf::Color::Transparent);
                     transparentCount++;
