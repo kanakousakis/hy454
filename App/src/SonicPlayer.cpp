@@ -36,10 +36,10 @@ int SonicPlayer::GetCurrentHeight() const {
 }
 
 bool SonicPlayer::IsBallState() const {
-    // Ball states: jumping (in air), spindash (charged attack)
-    // Rolling (crouch while running) does NOT damage enemies
+    // Ball states: jumping (in air), rolling (press down while moving), spindash (charged attack)
+    // Animation shows ball = behavior should match = damages enemies
     // Also: Spring state when FALLING (velY >= 0) because Sonic curls into ball
-    if (state == SonicState::Jumping || state == SonicState::Spindash) {
+    if (state == SonicState::Jumping || state == SonicState::Rolling || state == SonicState::Spindash) {
         return true;
     }
     // Spring state: only ball when falling down (going up = arms spread, not ball)

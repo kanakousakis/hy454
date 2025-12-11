@@ -158,6 +158,37 @@ public:
                     isBackground = true;
                 }
 
+                // 11. ULTRA-AGGRESSIVE: Darker black edge artifacts
+                else if (pixel.r < 20 && pixel.g < 20 && pixel.b < 20) {
+                    isBackground = true;
+                }
+
+                // 12. ULTRA-AGGRESSIVE: Very subtle green tint (lower threshold)
+                // Any pixel with even slight green dominance
+                else if (pixel.g > pixel.r + 5 && pixel.g > pixel.b + 5 &&
+                         pixel.g > 40 && pixel.g < 220 &&
+                         !(pixel.r > 180 && pixel.g > 180 && pixel.b < 100)) {
+                    // Even subtle green dominance = remove (except yellow rings)
+                    isBackground = true;
+                }
+
+                // 13. ULTRA-AGGRESSIVE: Dark greenish pixels (any darkness with green tint)
+                else if (pixel.g > pixel.r && pixel.g > pixel.b &&
+                         (pixel.r + pixel.g + pixel.b) < 120 &&
+                         pixel.g > 15) {
+                    // Dark pixel with any green dominance
+                    isBackground = true;
+                }
+
+                // 14. ULTRA-AGGRESSIVE: Grayish-green mid-tones
+                else if (pixel.r >= 60 && pixel.r <= 100 &&
+                         pixel.g >= 80 && pixel.g <= 140 &&
+                         pixel.b >= 60 && pixel.b <= 100 &&
+                         pixel.g > pixel.r + 5 && pixel.g > pixel.b + 5) {
+                    // Mid-tone gray with green bias
+                    isBackground = true;
+                }
+
                 if (isBackground) {
                     img.setPixel(x, y, sf::Color::Transparent);
                     transparentCount++;
