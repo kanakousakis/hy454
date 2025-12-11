@@ -133,6 +133,31 @@ public:
                     isBackground = true;
                 }
 
+                // 8. ANTI-ALIASED GREEN EDGES - Wide range around base green (147, 187, 148)
+                // Catches blended edge pixels from sprite anti-aliasing
+                else if (pixel.r >= 100 && pixel.r <= 180 &&
+                         pixel.g >= 140 && pixel.g <= 210 &&
+                         pixel.b >= 100 && pixel.b <= 180 &&
+                         pixel.g > pixel.r + 15 && pixel.g > pixel.b + 15) {
+                    // Greenish color similar to background with green dominant
+                    isBackground = true;
+                }
+
+                // 9. SUBTLE GREEN TINT - Any pixel with slight green dominance
+                // Catches faint green halos on edges
+                else if (pixel.g > pixel.r + 10 && pixel.g > pixel.b + 10 &&
+                         pixel.g > 50 && pixel.g < 220 &&
+                         !(pixel.r > 180 && pixel.g > 180 && pixel.b < 100)) {
+                    // Green is clearly dominant (not yellow rings where R≈G)
+                    // Exclude bright yellow (high R+G, low B)
+                    isBackground = true;
+                }
+
+                // 10. MEDIUM GREEN SHADES - Variations of green screen
+                else if (pixel.r < 60 && pixel.g >= 80 && pixel.g <= 180 && pixel.b < 60) {
+                    isBackground = true;
+                }
+
                 if (isBackground) {
                     img.setPixel(x, y, sf::Color::Transparent);
                     transparentCount++;
