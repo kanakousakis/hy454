@@ -94,44 +94,20 @@ public:
                     isBackground = true;
                 }
 
-                // 2. WHITE/GREY backgrounds - Remove light backgrounds
-                // Any light grey/white/beige pixel is a background (NOT sprite content)
-                // Check if R, G, B are all high and roughly equal (grey/white spectrum)
-                else if (pixel.r >= 200 && pixel.g >= 200 && pixel.b >= 200 &&
-                         std::abs(static_cast<int>(pixel.r) - static_cast<int>(pixel.g)) < 30 &&
-                         std::abs(static_cast<int>(pixel.g) - static_cast<int>(pixel.b)) < 30) {
-                    isBackground = true; // Remove white/grey/beige backgrounds
-                }
-
-                // 3. BALANCED GREEN DETECTION - Targets green backgrounds without destroying yellow rings
-                // Rings are YELLOW (high R+G, low B), so we check: G > R+12 AND G > B+25
-                // This ensures we only remove TRUE green (not yellow) pixels
-                else if (pixel.g > pixel.r + 12 && pixel.g > pixel.b + 25 && pixel.g > 30) {
-                    // Green is significantly higher than red AND much higher than blue
-                    // This is green background, NOT yellow ring content
+                // 2. Medium Green (0, 128, 0) - Standard green screen
+                else if (pixel.r < 20 && pixel.g >= 120 && pixel.g <= 140 && pixel.b < 20) {
                     isBackground = true;
                 }
 
-                // 4. Medium Green (0, 128, 0) - Standard green screen (WIDENED RANGE)
-                else if (pixel.r < 30 && pixel.g >= 100 && pixel.g <= 160 && pixel.b < 30) {
+                // 3. Pure Green (0, 255, 0)
+                else if (pixel.r < 30 && pixel.g > 200 && pixel.b < 30) {
                     isBackground = true;
                 }
 
-                // 5. Pure Green (0, 255, 0) and bright greens (WIDENED RANGE)
-                else if (pixel.r < 40 && pixel.g > 180 && pixel.b < 40) {
-                    isBackground = true;
-                }
-
-                // 6. Lighter Green key (147, 187, 148 variant) - Sonic sheet (WIDENED RANGE)
-                else if (pixel.r >= 130 && pixel.r <= 165 &&
-                    pixel.g >= 170 && pixel.g <= 205 &&
-                    pixel.b >= 130 && pixel.b <= 165) {
-                    isBackground = true;
-                }
-
-                // 7. Dark greens (any shade) - Catch darker green variants
-                else if (pixel.r < 70 && pixel.g > 30 && pixel.g < 120 && pixel.b < 70 &&
-                    pixel.g > pixel.r && pixel.g > pixel.b) {
+                // 4. Light Green (Sonic sheet background ~147, 187, 148)
+                else if (pixel.r >= 140 && pixel.r <= 155 &&
+                         pixel.g >= 180 && pixel.g <= 195 &&
+                         pixel.b >= 140 && pixel.b <= 155) {
                     isBackground = true;
                 }
 
@@ -142,35 +118,7 @@ public:
             }
         }
 
-        // SECOND PASS: Clean up edge artifacts (semi-transparent green pixels)
-        // This catches anti-aliased green edges that blend with sprites
-        int edgeCleanupCount = 0;
-        for (unsigned y = 0; y < size.y; ++y) {
-            for (unsigned x = 0; x < size.x; ++x) {
-                sf::Color pixel = img.getPixel(x, y);
-
-                // Skip already transparent
-                if (pixel.a == 0) continue;
-
-                // If pixel has any green tint and low opacity, it's likely an edge artifact
-                if (pixel.a < 255 && pixel.g > pixel.r + 10 && pixel.g > pixel.b + 10) {
-                    img.setPixel(x, y, sf::Color::Transparent);
-                    edgeCleanupCount++;
-                }
-                // Also remove semi-opaque greenish pixels
-                else if (pixel.a < 200 && pixel.g > 100 &&
-                         pixel.g > pixel.r && pixel.g > pixel.b) {
-                    img.setPixel(x, y, sf::Color::Transparent);
-                    edgeCleanupCount++;
-                }
-            }
-        }
-
-        std::cout << "    Made " << transparentCount << " pixels transparent";
-        if (edgeCleanupCount > 0) {
-            std::cout << " (+" << edgeCleanupCount << " edge cleanup)";
-        }
-        std::cout << std::endl;
+        std::cout << "    Made " << transparentCount << " pixels transparent" << std::endl;
 
         bmp->UpdateTexture();
     }
