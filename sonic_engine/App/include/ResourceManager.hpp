@@ -102,8 +102,9 @@ public:
                     isBackground = true;
                 }
                 
-                // 4. Pure Green (0, 255, 0)
-                else if (pixel.r < 30 && pixel.g > 200 && pixel.b < 30) {
+                // 4. Pure Green (0, 255, 0) - BRIGHT GREEN (most common in sprite sheets)
+                // Be aggressive here - catch all bright greens
+                else if (pixel.r < 50 && pixel.g > 180 && pixel.b < 50) {
                     isBackground = true;
                 }
                 

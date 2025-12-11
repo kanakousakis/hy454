@@ -196,7 +196,7 @@ public:
 class EnemySpriteConfig {
 public:
     static constexpr unsigned char COLOR_KEY_R = 0;
-    static constexpr unsigned char COLOR_KEY_G = 128;
+    static constexpr unsigned char COLOR_KEY_G = 255;
     static constexpr unsigned char COLOR_KEY_B = 0;
     
     // === CRABMEAT / GANIGANI (Top-left corner) ===
@@ -410,7 +410,7 @@ public:
 class MiscSpriteConfig {
 public:
     static constexpr unsigned char COLOR_KEY_R = 0;
-    static constexpr unsigned char COLOR_KEY_G = 128;
+    static constexpr unsigned char COLOR_KEY_G = 255;
     static constexpr unsigned char COLOR_KEY_B = 0;
     
     // === RINGS (Dami-Karv verified coordinates) ===
@@ -562,7 +562,7 @@ public:
 class AnimalSpriteConfig {
 public:
     static constexpr unsigned char COLOR_KEY_R = 0;
-    static constexpr unsigned char COLOR_KEY_G = 128;
+    static constexpr unsigned char COLOR_KEY_G = 255;
     static constexpr unsigned char COLOR_KEY_B = 0;
     
     // === FLICKY (Blue bird) - Green Hill Zone ===
