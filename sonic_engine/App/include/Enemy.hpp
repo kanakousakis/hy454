@@ -2179,6 +2179,11 @@ public:
     }
     
     void Render(const engine::Rect& viewWindow) {
+        static int renderDebugCount = 0;
+        if (++renderDebugCount % 60 == 0) {
+            std::cout << "[EnemyManager] Rendering " << enemies.size() << " enemies, viewWindow=("
+                      << viewWindow.x << "," << viewWindow.y << "," << viewWindow.w << "," << viewWindow.h << ")" << std::endl;
+        }
         for (auto& enemy : enemies) {
             enemy->Render(viewWindow);
         }

@@ -6,6 +6,7 @@
 #include <SFML/Graphics.hpp>
 #include <string>
 #include <map>
+#include <set>
 #include <iostream>
 #include <cmath>
 
@@ -317,7 +318,13 @@ public:
     engine::BitmapPtr GetBackgroundSheet() const { return backgroundSheet; }
     
     engine::AnimationFilm* GetFilm(const std::string& id) {
-        return engine::AnimationFilmHolder::Instance().GetFilm(id);
+        auto* film = engine::AnimationFilmHolder::Instance().GetFilm(id);
+        static std::set<std::string> reportedFilms;
+        if (reportedFilms.find(id) == reportedFilms.end()) {
+            std::cout << "[ResourceManager] GetFilm(\"" << id << "\") = " << (film ? "OK" : "NULL") << std::endl;
+            reportedFilms.insert(id);
+        }
+        return film;
     }
     
     bool IsLoaded() const { return loaded; }
