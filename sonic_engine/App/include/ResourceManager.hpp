@@ -95,9 +95,12 @@ public:
                 }
 
                 // 2. WHITE/GREY backgrounds - Remove light backgrounds
-                // Pure white and light grey are backgrounds (NOT sprite content)
-                else if (pixel.r >= 240 && pixel.g >= 240 && pixel.b >= 240) {
-                    isBackground = true; // Remove white/grey backgrounds
+                // Any light grey/white/beige pixel is a background (NOT sprite content)
+                // Check if R, G, B are all high and roughly equal (grey/white spectrum)
+                else if (pixel.r >= 200 && pixel.g >= 200 && pixel.b >= 200 &&
+                         std::abs(static_cast<int>(pixel.r) - static_cast<int>(pixel.g)) < 30 &&
+                         std::abs(static_cast<int>(pixel.g) - static_cast<int>(pixel.b)) < 30) {
+                    isBackground = true; // Remove white/grey/beige backgrounds
                 }
 
                 // 3. AGGRESSIVE GREEN DETECTION - Any pixel that's predominantly green
