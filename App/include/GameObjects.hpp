@@ -215,11 +215,11 @@ public:
     }
     
     // Returns true if Sonic can break this
-    // Can break by: ball state, hitting from below, OR simply touching (walking into it)
+    // MUST be in ball state (jumping, rolling, or spindash) to break
     bool CanBreak(bool sonicInBallState, float sonicVelY) const {
         if (state != MonitorState::Idle) return false;
-        // Can always break monitors by touching them (like classic Sonic 1)
-        return true;
+        // Require ball state to break (jumping, rolling, or spindash)
+        return sonicInBallState;
     }
     
     void Break(uint64_t currentTime) {
