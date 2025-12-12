@@ -413,26 +413,26 @@ public:
     static constexpr unsigned char COLOR_KEY_G = 255;
     static constexpr unsigned char COLOR_KEY_B = 0;
     
-    // === RINGS (Python-scanned coordinates) ===
-    // Spinning animation frames - 4 frames showing ring rotation
+    // === RINGS (from original Sonic sprite sheet) ===
+    // First 4 frames: Rotation animation (loops continuously)
     static AnimationDef GetRingAnimation() {
         return {"ring", {
-            {8, 25, 16, 16},    // Frame 1 - front view
-            {32, 25, 16, 16},   // Frame 2 - tilted
-            {72, 25, 16, 16},   // Frame 3 - more tilted (FIXED from x:56)
-            {96, 25, 16, 16}    // Frame 4 - side view (FIXED from x:72)
-        }, true, 70};
+            {8, 25, 16, 16},    // Frame 1 - full circle (front view)
+            {32, 25, 16, 16},   // Frame 2 - tilted ellipse
+            {56, 25, 8, 16},    // Frame 3 - very narrow (side view, 8px wide)
+            {72, 25, 16, 16}    // Frame 4 - tilted other direction
+        }, true, 80};  // Loop forever, 80ms per frame
     }
-    
-    // Ring collection sparkle animation (uses same ring frames but faster)
-    // Creates a quick "pop" effect as the ring is collected
+
+    // Last 4 frames: Collection sparkle (super fast glow effect)
+    // Plays once when ring is collected, then disappears
     static AnimationDef GetRingCollectAnimation() {
         return {"ring_collect", {
-            {8, 25, 16, 16},   // Same as ring frames (FIXED coordinates)
-            {32, 25, 16, 16},
-            {72, 25, 16, 16},  // FIXED from x:56
-            {96, 25, 16, 16}   // FIXED from x:72
-        }, false, 30};  // Very fast animation (30ms per frame)
+            {96, 25, 16, 16},   // Glow frame 1
+            {120, 25, 16, 16},  // Glow frame 2
+            {144, 25, 16, 16},  // Glow frame 3
+            {168, 25, 16, 16}   // Glow frame 4
+        }, false, 60};  // Don't loop, 60ms per frame = 240ms total (0.24 sec)
     }
     
     // === BIG RING / OKINA RING (Special stage entrance) ===
