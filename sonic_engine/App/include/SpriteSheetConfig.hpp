@@ -203,12 +203,12 @@ public:
     static std::vector<AnimationDef> GetCrabmeatAnimations() {
         return {
             {"crabmeat_walk", {
-                {4, 10, 48, 32},
-                {56, 10, 48, 32},
-                {108, 10, 48, 32}
+                {8, 8, 48, 40},      // Walk frame 1 (FIXED coordinates)
+                {60, 8, 48, 40},     // Walk frame 2
+                {112, 8, 48, 40}     // Walk frame 3
             }, true, 150},
             {"crabmeat_attack", {
-                {4, 46, 64, 32}
+                {8, 50, 64, 40}      // Attack frame (FIXED coordinates)
             }, false, 200}
         };
     }
@@ -217,35 +217,35 @@ public:
     static std::vector<AnimationDef> GetBuzzBomberAnimations() {
         return {
             {"buzzbomber_fly", {
-                {4, 90, 48, 36},
-                {56, 90, 48, 36}
+                {8, 90, 50, 40},     // Fly frame 1 (FIXED coordinates)
+                {60, 90, 50, 40}     // Fly frame 2
             }, true, 80},
             {"buzzbomber_shoot", {
-                {108, 90, 48, 36},
-                {4, 130, 48, 36}
+                {112, 90, 50, 40},   // Shoot frame 1 (FIXED coordinates)
+                {164, 90, 50, 40}    // Shoot frame 2
             }, false, 100}
         };
     }
     
-    // === MOTOBUG / MOTORA (Right of Crabmeat) ===
+    // === MOTOBUG / MOTORA (Top-center, red beetles) ===
     static std::vector<AnimationDef> GetMotobugAnimations() {
         return {
             {"motobug_move", {
-                {168, 90, 44, 32},
-                {216, 90, 44, 32},
-                {264, 90, 44, 32},
-                {312, 90, 44, 32}
+                {160, 8, 52, 40},    // Move frame 1 (FIXED coordinates)
+                {216, 8, 52, 40},    // Move frame 2
+                {272, 8, 40, 40},    // Move frame 3
+                {336, 8, 44, 40}     // Move frame 4
             }, true, 100}
         };
     }
     
-    // === MASHER / BATABATA (Piranha, below Motobug) ===
+    // === MASHER / BATABATA (Piranha) ===
     static std::vector<AnimationDef> GetMasherAnimations() {
         return {
-            {"masher_idle", {{168, 196, 24, 40}}, false, 100},
+            {"masher_idle", {{160, 190, 32, 48}}, false, 100},  // FIXED coordinates
             {"masher_jump", {
-                {168, 196, 24, 40},
-                {196, 196, 24, 40}
+                {160, 190, 32, 48},  // FIXED coordinates
+                {196, 190, 32, 48}
             }, true, 80}
         };
     }
@@ -254,11 +254,11 @@ public:
     static std::vector<AnimationDef> GetNewtronBlueAnimations() {
         return {
             {"newtron_blue_appear", {
-                {4, 330, 48, 32},
-                {56, 330, 48, 32},
-                {108, 330, 48, 32}
+                {12, 253, 48, 37},   // Appear frame 1 (FIXED coordinates)
+                {64, 250, 52, 40},   // Appear frame 2
+                {120, 250, 25, 40}   // Fully appeared
             }, false, 100},
-            {"newtron_blue_idle", {{108, 330, 48, 32}}, false, 100}
+            {"newtron_blue_idle", {{120, 250, 25, 40}}, false, 100}
         };
     }
     
@@ -266,8 +266,8 @@ public:
     static std::vector<AnimationDef> GetNewtronGreenAnimations() {
         return {
             {"newtron_green_fly", {
-                {4, 410, 48, 32},
-                {56, 410, 48, 32}
+                {8, 330, 52, 40},    // Fly frame 1 (FIXED coordinates)
+                {64, 330, 52, 40}    // Fly frame 2
             }, true, 80}
         };
     }
@@ -276,13 +276,13 @@ public:
     static std::vector<AnimationDef> GetBombAnimations() {
         return {
             {"bomb_walk", {
-                {4, 598, 32, 32},
-                {40, 598, 32, 32},
-                {76, 598, 32, 32},
-                {112, 598, 32, 32}
+                {8, 590, 36, 36},    // Walk frame 1 (FIXED coordinates)
+                {48, 590, 36, 36},   // Walk frame 2
+                {88, 590, 36, 36},   // Walk frame 3
+                {128, 590, 36, 36}   // Walk frame 4
             }, true, 120},
             {"bomb_explode", {
-                {4, 650, 48, 48},
+                {4, 650, 48, 48},    // Keep original explosion frames
                 {56, 650, 56, 56},
                 {116, 650, 64, 64}
             }, false, 80}
