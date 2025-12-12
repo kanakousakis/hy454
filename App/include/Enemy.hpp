@@ -2,6 +2,7 @@
 #define ENEMY_HPP
 
 #include "Engine.hpp"
+#include "ResourceManager.hpp"
 #include <functional>
 #include <cmath>
 
@@ -181,8 +182,8 @@ private:
     uint64_t pauseTime = 0;
     bool isPaused = false;
     static constexpr uint64_t PAUSE_DURATION = 500;
-    static constexpr int FRAME_COUNT = 2;
-    static constexpr uint64_t FRAME_DELAY = 150;
+    static constexpr int FRAME_COUNT = 4;  // FIXED: 4 frames in sprite sheet
+    static constexpr uint64_t FRAME_DELAY = 100;  // Match sprite config
 
 public:
     Motobug(float x, float y) 
@@ -240,43 +241,26 @@ public:
     
     void Render(const engine::Rect& viewWindow) override {
         auto& gfx = engine::GetGraphics();
-        
+
         int screenX = static_cast<int>(posX) - viewWindow.x;
         int screenY = static_cast<int>(posY) - viewWindow.y;
-        
+
         // Skip if off screen
         if (screenX + width < 0 || screenX > viewWindow.w ||
             screenY + height < 0 || screenY > viewWindow.h) {
             return;
         }
-        
-        engine::Color bodyColor;
-        if (state == State::Dying) {
-            bodyColor = engine::MakeColor(255, 100, 100);  // Flash red
+
+        // Use actual sprite rendering
+        auto* film = app::ResourceManager::Instance().GetFilm("motobug_move");
+        if (film && film->GetTotalFrames() > 0) {
+            int frame = currentFrame % film->GetTotalFrames();
+            film->DisplayFrame({screenX, screenY}, static_cast<engine::byte>(frame));
         } else {
-            bodyColor = engine::MakeColor(200, 50, 50);  // Red body
+            // Fallback: colored rectangle
+            gfx.DrawRect({screenX, screenY, width, height},
+                        engine::MakeColor(200, 50, 50), true);
         }
-        
-        // Draw Motobug body
-        gfx.DrawRect({screenX + 5, screenY, width - 10, height - 8}, bodyColor, true);
-        
-        // Wheel
-        int wheelOffset = (currentFrame == 0) ? 0 : 2;
-        gfx.DrawRect({screenX + 8, screenY + height - 12 + wheelOffset, 10, 10}, 
-                     engine::MakeColor(50, 50, 50), true);
-        gfx.DrawRect({screenX + width - 18, screenY + height - 12 - wheelOffset, 10, 10}, 
-                     engine::MakeColor(50, 50, 50), true);
-        
-        // Eye
-        int eyeX = facingRight ? screenX + width - 12 : screenX + 6;
-        gfx.DrawRect({eyeX, screenY + 6, 6, 6}, engine::MakeColor(255, 255, 255), true);
-        
-        // Antenna
-        gfx.DrawRect({screenX + width/2 - 1, screenY - 6, 2, 8}, 
-                     engine::MakeColor(100, 100, 100), true);
-        
-        // Border
-        gfx.DrawRect({screenX, screenY, width, height}, engine::MakeColor(0, 0, 0), false);
     }
 };
 
@@ -336,32 +320,25 @@ public:
     
     void Render(const engine::Rect& viewWindow) override {
         auto& gfx = engine::GetGraphics();
-        
+
         int screenX = static_cast<int>(posX) - viewWindow.x;
         int screenY = static_cast<int>(posY) - viewWindow.y;
-        
+
         if (screenX + width < 0 || screenX > viewWindow.w ||
             screenY + height < 0 || screenY > viewWindow.h) {
             return;
         }
-        
-        engine::Color bodyColor = state == State::Dying ? 
-            engine::MakeColor(255, 150, 150) : engine::MakeColor(255, 100, 50);
-        
-        // Body
-        gfx.DrawRect({screenX + 8, screenY + 8, width - 16, height - 8}, bodyColor, true);
-        
-        // Claws
-        int clawOffset = (currentFrame == 0) ? 0 : 4;
-        gfx.DrawRect({screenX, screenY + 10 - clawOffset, 12, 16}, bodyColor, true);
-        gfx.DrawRect({screenX + width - 12, screenY + 10 + clawOffset, 12, 16}, bodyColor, true);
-        
-        // Eyes
-        gfx.DrawRect({screenX + 14, screenY + 4, 6, 6}, engine::MakeColor(255, 255, 255), true);
-        gfx.DrawRect({screenX + width - 20, screenY + 4, 6, 6}, engine::MakeColor(255, 255, 255), true);
-        
-        // Border
-        gfx.DrawRect({screenX, screenY, width, height}, engine::MakeColor(0, 0, 0), false);
+
+        // Use actual sprite rendering
+        auto* film = app::ResourceManager::Instance().GetFilm("crabmeat_walk");
+        if (film && film->GetTotalFrames() > 0) {
+            int frame = currentFrame % film->GetTotalFrames();
+            film->DisplayFrame({screenX, screenY}, static_cast<engine::byte>(frame));
+        } else {
+            // Fallback: colored rectangle
+            gfx.DrawRect({screenX, screenY, width, height},
+                        engine::MakeColor(255, 100, 50), true);
+        }
     }
 };
 
@@ -455,45 +432,25 @@ public:
     
     void Render(const engine::Rect& viewWindow) override {
         auto& gfx = engine::GetGraphics();
-        
+
         int screenX = static_cast<int>(posX) - viewWindow.x;
         int screenY = static_cast<int>(posY) - viewWindow.y;
-        
+
         if (screenX + width < 0 || screenX > viewWindow.w ||
             screenY + height < 0 || screenY > viewWindow.h) {
             return;
         }
-        
-        engine::Color bodyColor = state == State::Dying ? 
-            engine::MakeColor(255, 200, 100) : engine::MakeColor(255, 200, 0);  // Yellow
-        engine::Color stripeColor = engine::MakeColor(40, 40, 40);  // Black stripes
-        
-        // Body (oval shape approximated)
-        gfx.DrawRect({screenX + 8, screenY + 10, width - 16, height - 14}, bodyColor, true);
-        
-        // Stripes
-        gfx.DrawRect({screenX + 14, screenY + 12, width - 28, 4}, stripeColor, true);
-        gfx.DrawRect({screenX + 14, screenY + 20, width - 28, 4}, stripeColor, true);
-        
-        // Head
-        int headX = facingRight ? screenX + width - 16 : screenX;
-        gfx.DrawRect({headX, screenY + 8, 16, 16}, bodyColor, true);
-        
-        // Eyes
-        int eyeX = facingRight ? headX + 8 : headX + 2;
-        gfx.DrawRect({eyeX, screenY + 10, 6, 6}, engine::MakeColor(255, 0, 0), true);  // Red eyes
-        
-        // Wings (animate up/down)
-        int wingY = (currentFrame == 0) ? screenY : screenY + 4;
-        gfx.DrawRect({screenX + 12, wingY - 6, 22, 8}, 
-                     engine::MakeColor(200, 200, 255, 180), true);  // Translucent wings
-        
-        // Stinger
-        int stingerX = facingRight ? screenX - 4 : screenX + width;
-        gfx.DrawRect({stingerX, screenY + height/2, 6, 3}, stripeColor, true);
-        
-        // Border
-        gfx.DrawRect({screenX, screenY, width, height}, engine::MakeColor(0, 0, 0), false);
+
+        // Use actual sprite rendering
+        auto* film = app::ResourceManager::Instance().GetFilm("buzzbomber_fly");
+        if (film && film->GetTotalFrames() > 0) {
+            int frame = currentFrame % film->GetTotalFrames();
+            film->DisplayFrame({screenX, screenY}, static_cast<engine::byte>(frame));
+        } else {
+            // Fallback: colored rectangle
+            gfx.DrawRect({screenX, screenY, width, height},
+                        engine::MakeColor(255, 200, 0), true);
+        }
     }
 };
 
@@ -581,43 +538,22 @@ public:
                          engine::MakeColor(100, 100, 255), true);
             return;
         }
-        
+
         if (screenX + width < 0 || screenX > viewWindow.w ||
             screenY + height < 0 || screenY > viewWindow.h) {
             return;
         }
-        
-        engine::Color bodyColor = state == State::Dying ? 
-            engine::MakeColor(255, 150, 150) : engine::MakeColor(150, 50, 150);  // Purple
-        
-        // Body (fish shape)
-        gfx.DrawRect({screenX + 2, screenY + 8, width - 4, height - 16}, bodyColor, true);
-        
-        // Head/mouth
-        int mouthY = screenY + 4;
-        int mouthOpen = (currentFrame == 0) ? 8 : 12;
-        gfx.DrawRect({screenX, mouthY, width, mouthOpen}, bodyColor, true);
-        
-        // Teeth
-        gfx.DrawRect({screenX + 4, mouthY + mouthOpen - 4, 4, 4}, 
-                     engine::MakeColor(255, 255, 255), true);
-        gfx.DrawRect({screenX + width - 8, mouthY + mouthOpen - 4, 4, 4}, 
-                     engine::MakeColor(255, 255, 255), true);
-        
-        // Eye
-        int eyeX = facingRight ? screenX + width - 10 : screenX + 4;
-        gfx.DrawRect({eyeX, screenY + 10, 6, 6}, engine::MakeColor(255, 255, 255), true);
-        gfx.DrawRect({eyeX + 2, screenY + 12, 2, 2}, engine::MakeColor(0, 0, 0), true);
-        
-        // Tail fin
-        int tailX = facingRight ? screenX - 6 : screenX + width;
-        gfx.DrawRect({tailX, screenY + height/2 - 6, 8, 12}, bodyColor, true);
-        
-        // Dorsal fin
-        gfx.DrawRect({screenX + width/2 - 4, screenY, 8, 10}, bodyColor, true);
-        
-        // Border
-        gfx.DrawRect({screenX, screenY, width, height}, engine::MakeColor(0, 0, 0), false);
+
+        // Use actual sprite rendering
+        auto* film = app::ResourceManager::Instance().GetFilm("masher_jump");
+        if (film && film->GetTotalFrames() > 0) {
+            int frame = currentFrame % film->GetTotalFrames();
+            film->DisplayFrame({screenX, screenY}, static_cast<engine::byte>(frame));
+        } else {
+            // Fallback: colored rectangle
+            gfx.DrawRect({screenX, screenY, width, height},
+                        engine::MakeColor(150, 50, 150), true);
+        }
     }
 };
 
