@@ -1,114 +1,132 @@
-# Sonic Engine - CS454 
+# Sonic Engine - HY454
 
-Sonic the Hedgehog game engine in C++ using SFML.
+2D Sonic-style game project in C++ using SFML.
 
----
+## Repository Layout
 
-## Quick Start
+The actual project lives inside the `sonic_engine/` subdirectory.
 
-### Install SFML
-
-**Linux:**
-```bash
-sudo apt-get install libsfml-dev    # Ubuntu/Debian
-sudo dnf install SFML-devel         # Fedora
-sudo pacman -S sfml                 # Arch
+```text
+hy454/
+|-- README.md
+|-- Project - Sonic_V3.pdf
+`-- sonic_engine/
+    |-- App/
+    |-- Engine/
+    |-- assets/
+    |-- Makefile
+    `-- CMakeLists.txt
 ```
-
-**macOS:**
-```bash
-brew install sfml
-```
-
-**Windows (MSYS2):**
-```bash
-pacman -S mingw-w64-x86_64-sfml mingw-w64-x86_64-gcc
-```
-
-### Build and Run
-
-```bash
-make
-./bin/SonicGame
-```
-
----
-
-## Controls
-
-- **Arrow Keys / WASD** - Move
-- **Space / Up / W** - Jump
-- **Down / S** - Crouch / Roll
-- **Down + Jump** - Spindash
-- **ESC** - Pause
-- **Q (hold)** - Quit
-- **G** - Toggle grid
-- **G (hold)** - Toggle god mode
-- **F1** - Toggle debug
-- **U / Mouse left click (hold)** - Look up
-
----
-
-## Build Commands
-
-```bash
-make          # Build project
-make run      # Build and run
-make clean    # Remove build files
-make help     # Show help
-```
-
----
-
-## Project Structure
-
-```
-sonic_engine/
-├── App/              # Game logic (Sonic, enemies, rings, etc.)
-├── Engine/           # Core engine (animation, tiles, sprites, etc.)
-├── assets/           # Graphics, maps, sounds
-├── Makefile          # Build system
-└── README.md
-```
-
----
-
-## Features
-
-- Tile-based terrain with collision detection
-- Parallax scrolling background
-- Sonic physics (acceleration, jumping, rolling, spindash)
-- Ring system with scatter on damage
-- Multiple enemy types 
-- Springs, spikes, checkpoints, monitors
-- Power-ups (shield, speed shoes, invincibility e.t.c)
-- HUD with score, rings, time, lives
-- Pause menu and game over screen
-- Everything from pdf implemented as instructed +more
----
-
-## Troubleshooting
-
-**"SFML not found"**  
-→ Install SFML 
-
-**"undefined reference to SFML"**  
-→ Install pkg-config: `sudo apt-get install pkg-config`
-
-**Black screen**  
-→ Run from project root, not from `bin/` directory
-
-**Low FPS**  
-→ Turn off grid (G) and debug mode (F1)
-
----
 
 ## Requirements
 
-- C++17 compiler (GCC 9+ / Clang 10+)
+- C++17 compiler
 - SFML 2.5+
-- Make or CMake
+- `make`
 
----
+## Install SFML
 
-Built with zero warnings using `-Wall -Wextra`.
+### Ubuntu / Debian
+
+```bash
+sudo apt-get update
+sudo apt-get install libsfml-dev pkg-config
+```
+
+### Fedora
+
+```bash
+sudo dnf install SFML-devel pkgconf-pkg-config
+```
+
+### Arch
+
+```bash
+sudo pacman -S sfml pkgconf
+```
+
+### macOS
+
+```bash
+brew install sfml pkg-config
+```
+
+### Windows
+
+Use MSYS2 and install the MinGW SFML toolchain:
+
+```bash
+pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-sfml
+```
+
+## Build
+
+From the repository root:
+
+```bash
+cd sonic_engine && make
+```
+
+## Run
+
+From the repository root:
+
+```bash
+cd sonic_engine && ./bin/SonicGame
+```
+
+Or build and run in one step:
+
+```bash
+cd sonic_engine && make run
+```
+
+## Useful Commands
+
+```bash
+cd sonic_engine && make
+cd sonic_engine && make run
+cd sonic_engine && make clean
+cd sonic_engine && make help
+```
+
+## Controls
+
+- Arrow Keys / WASD: Move
+- Space / Up / W: Jump
+- Down / S: Crouch / Roll
+- Down + Jump: Spindash
+- Esc: Pause
+- Q (hold): Quit
+- G: Toggle grid
+- G (hold): Toggle god mode
+- F1: Toggle debug
+- U / Left mouse button (hold): Look up
+
+## Features
+
+- Tile-based terrain and collision handling
+- Animation and sprite systems
+- Parallax background rendering
+- Sonic movement, jumping, rolling, and spindash
+- Rings, enemies, checkpoints, springs, spikes, and monitors
+- HUD, pause flow, and game-over flow
+- Audio and map assets included in the project
+
+## Troubleshooting
+
+### SFML not found
+
+Install SFML and `pkg-config` first.
+
+### Undefined SFML references
+
+Make sure the SFML development libraries are installed, not just the runtime.
+
+### Black screen or missing assets
+
+Run the game from inside `sonic_engine/` so relative asset paths resolve correctly.
+
+### Slow WSL filesystem access
+
+Building under `/mnt/c/...` in WSL can be slower than native Linux paths.
