@@ -12,13 +12,13 @@
 
 namespace engine {
 
-// Forward declarations
+//forward declarations
 class Sprite;
 class GridLayer;
 
-// ============================================================================
-// Utility: clip_rect function (from lectures)
-// ============================================================================
+//============================================================================
+//utility: clip_rect function (from lectures)
+//============================================================================
 template <typename T>
 bool clip_rect(T x, T y, T w, T h,
                T wx, T wy, T ww, T wh,
@@ -36,22 +36,22 @@ inline bool clip_rect(const Rect& r, const Rect& area, Rect* result) {
     );
 }
 
-// Fast box overlap test (returns true if boxes DO NOT overlap)
+//fast box overlap test (returns true if boxes DO NOT overlap)
 inline bool NoBoxOverlap(const Rect& b1, const Rect& b2) {
-    return b2.x + b2.w < b1.x ||   // b2 left of b1
-           b1.x + b1.w < b2.x ||   // b1 left of b2
-           b2.y + b2.h < b1.y ||   // b2 above b1
-           b1.y + b1.h < b2.y;     // b1 above b2
+    return b2.x + b2.w < b1.x ||  //b2 left of b1
+           b1.x + b1.w < b2.x ||  //b1 left of b2
+           b2.y + b2.h < b1.y ||  //b2 above b1
+           b1.y + b1.h < b2.y;  //b1 above b2
 }
 
 inline bool BoxesOverlap(const Rect& b1, const Rect& b2) {
     return !NoBoxOverlap(b1, b2);
 }
 
-// ============================================================================
-// MotionQuantizer (from lectures Section 10.2)
-// Breaks large movements into grid-element-sized steps
-// ============================================================================
+//============================================================================
+//motionQuantizer (from lectures Section 10.2)
+//breaks large movements into grid-element-sized steps
+//============================================================================
 class MotionQuantizer {
 public:
     using Mover = std::function<void(const Rect& r, int* dx, int* dy)>;
@@ -78,7 +78,7 @@ public:
         if (!used) {
             if (mover) mover(r, dx, dy);
         } else {
-            // Break motion into smaller steps
+//break motion into smaller steps
             Rect currRect = r;
             int totalDx = 0, totalDy = 0;
             
@@ -113,10 +113,10 @@ public:
     MotionQuantizer() = default;
 };
 
-// ============================================================================
-// GravityHandler (from lectures Section 12.1)
-// Manages falling state based on ground detection
-// ============================================================================
+//============================================================================
+//gravityHandler (from lectures Section 12.1)
+//manages falling state based on ground detection
+//============================================================================
 class GravityHandler {
 public:
     using OnSolidGroundPred = std::function<bool(const Rect&)>;
@@ -160,10 +160,10 @@ public:
     GravityHandler() = default;
 };
 
-// ============================================================================
-// Clipper (from lectures Section 10.3)
-// Clips sprites to view window for rendering
-// ============================================================================
+//============================================================================
+//clipper (from lectures Section 10.3)
+//clips sprites to view window for rendering
+//============================================================================
 class Clipper {
 public:
     using ViewGetter = std::function<const Rect&(void)>;
@@ -181,7 +181,7 @@ public:
               Point* dpyPos, Rect* clippedBox) const {
         
         if (!viewGetter) {
-            // No view set, render at absolute position
+//no view set, render at absolute position
             *dpyPos = {r.x, r.y};
             *clippedBox = {0, 0, r.w, r.h};
             return true;
@@ -195,13 +195,13 @@ public:
             return false;
         }
         
-        // Offset within sprite frame
+//offset within sprite frame
         clippedBox->x = visibleArea.x - r.x;
         clippedBox->y = visibleArea.y - r.y;
         clippedBox->w = visibleArea.w;
         clippedBox->h = visibleArea.h;
         
-        // Screen position
+//screen position
         dpyPos->x = dpyArea.x + (visibleArea.x - view.x);
         dpyPos->y = dpyArea.y + (visibleArea.y - view.y);
         
@@ -211,10 +211,10 @@ public:
     Clipper() = default;
 };
 
-// ============================================================================
-// BoundingArea (from lectures Section 11.2)
-// Abstract base for collision shapes
-// ============================================================================
+//============================================================================
+//boundingArea (from lectures Section 11.2)
+//abstract base for collision shapes
+//============================================================================
 class BoundingArea {
 public:
     virtual bool Intersects(const BoundingArea& area) const = 0;
@@ -253,10 +253,10 @@ public:
     BoundingCircle(const Point& c, int r) : center(c), radius(r) {}
 };
 
-// ============================================================================
-// Sprite (from lectures Section 10.1)
-// Main game object with animation, movement, and collision
-// ============================================================================
+//============================================================================
+//sprite (from lectures Section 10.1)
+//main game object with animation, movement, and collision
+//============================================================================
 class Sprite {
 public:
     using Mover = std::function<void(const Rect&, int* dx, int* dy)>;
@@ -277,7 +277,7 @@ protected:
     GravityHandler  gravity;
     
 public:
-    // Position
+//position
     int GetX() const { return x; }
     int GetY() const { return y; }
     void SetPos(int _x, int _y) { x = _x; y = _y; }
@@ -286,7 +286,7 @@ public:
         return { x, y, frameBox.w, frameBox.h }; 
     }
     
-    // Movement with grid collision
+//movement with grid collision
     void SetMover(const Mover& f) { 
         mover = f;
         quantizer.SetMover(f); 
@@ -307,11 +307,11 @@ public:
         return *this;
     }
     
-    // Z-order for rendering
+//z-order for rendering
     void SetZorder(unsigned z) { zorder = z; }
     unsigned GetZorder() const { return zorder; }
     
-    // Animation frame
+//animation frame
     void SetFrame(byte i) {
         if (currFilm && i < currFilm->GetTotalFrames()) {
             if (i != frameNo) {
@@ -322,7 +322,7 @@ public:
     }
     byte GetFrame() const { return frameNo; }
     
-    // Film
+//film
     void SetFilm(AnimationFilm* film) {
         currFilm = film;
         if (film) {
@@ -332,28 +332,28 @@ public:
     }
     AnimationFilm* GetFilm() const { return currFilm; }
     
-    // Visibility
+//visibility
     void SetVisibility(bool v) { isVisible = v; }
     bool IsVisible() const { return isVisible; }
     
-    // Type and state IDs
+//type and state IDs
     const std::string& GetTypeId() const { return typeId; }
     void SetTypeId(const std::string& t) { typeId = t; }
     const std::string& GetStateId() const { return stateId; }
     void SetStateId(const std::string& s) { stateId = s; }
     
-    // Direct motion (bypasses grid collision)
+//direct motion (bypasses grid collision)
     Sprite& SetHasDirectMotion(bool v) { directMotion = v; return *this; }
     bool GetHasDirectMotion() const { return directMotion; }
     
-    // Gravity
+//gravity
     GravityHandler& GetGravityHandler() { return gravity; }
     const GravityHandler& GetGravityHandler() const { return gravity; }
     
-    // Motion quantizer access
+//motion quantizer access
     MotionQuantizer& GetQuantizer() { return quantizer; }
     
-    // Bounding area for collision
+//bounding area for collision
     void SetBoundingArea(BoundingArea* area) { 
         delete boundingArea;
         boundingArea = area; 
@@ -361,30 +361,30 @@ public:
     BoundingArea* GetBoundingArea() { return boundingArea; }
     const BoundingArea* GetBoundingArea() const { return boundingArea; }
     
-    // Collision check
+//collision check
     bool CollisionCheck(const Sprite* s) const;
     
-    // Display (clips to view and renders)
+//display (clips to view and renders)
     void Display(const Rect& dpyArea, const Clipper& clipper) const;
     
-    // Constructors
+//constructors
     Sprite() = default;
     Sprite(int _x, int _y, AnimationFilm* film, const std::string& _typeId = "");
     ~Sprite();
 };
 
-// ============================================================================
-// SpriteManager (from lectures Section 10.5)
-// Singleton managing all sprites, sorted by z-order
-// ============================================================================
+//============================================================================
+//spriteManager (from lectures Section 10.5)
+//singleton managing all sprites, sorted by z-order
+//============================================================================
 class SpriteManager {
 public:
     using SpriteList = std::list<Sprite*>;
     using TypeLists  = std::map<std::string, SpriteList>;
     
 private:
-    SpriteList dpyList;   // Sorted by ascending z-order
-    TypeLists  types;     // Sprites grouped by typeId
+    SpriteList dpyList;  //sorted by ascending z-order
+    TypeLists  types;  //sprites grouped by typeId
     static SpriteManager* instance;
     
     SpriteManager() = default;
@@ -405,10 +405,10 @@ public:
     ~SpriteManager() { Clear(); }
 };
 
-// ============================================================================
-// CollisionChecker (from lectures Section 11.3)
-// Singleton managing sprite-to-sprite collision pairs
-// ============================================================================
+//============================================================================
+//collisionChecker (from lectures Section 11.3)
+//singleton managing sprite-to-sprite collision pairs
+//============================================================================
 class CollisionChecker {
 public:
     using Action = std::function<void(Sprite* s1, Sprite* s2)>;
@@ -432,20 +432,20 @@ public:
     
     void Register(Sprite* s1, Sprite* s2, const Action& f);
     void Cancel(Sprite* s1, Sprite* s2);
-    void CancelAll(Sprite* s);  // Remove all entries involving this sprite
+    void CancelAll(Sprite* s);  //remove all entries involving this sprite
     
     void Check();
     
     void Clear() { entries.clear(); }
 };
 
-// ============================================================================
-// Helper: Link sprite to grid layer for collision
-// ============================================================================
+//============================================================================
+//helper: Link sprite to grid layer for collision
+//============================================================================
 Sprite::Mover MakeGridLayerMover(GridLayer* grid);
 
 void PrepareSpriteGravityHandler(GridLayer* grid, Sprite* sprite);
 
-} // namespace engine
+}  //namespace engine
 
-#endif // ENGINE_SPRITE_HPP
+#endif  //ENGINE_SPRITE_HPP

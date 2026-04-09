@@ -4,7 +4,7 @@ CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -IEngine/include -IApp/include
 
 # SFML flags
-SFML_LIBS = -lsfml-graphics -lsfml-window -lsfml-system
+SFML_LIBS = -lsfml-graphics -lsfml-window -lsfml-system -lsfml-audio
 
 LDFLAGS = $(SFML_LIBS)
 
@@ -27,9 +27,14 @@ ENGINE_SRCS = \
 
 ENGINE_OBJ = $(ENGINE_SRCS:Engine/src/%.cpp=$(BUILD_DIR)/engine/%.o)
 
-# App sources  
-APP_SRC = $(wildcard App/src/*.cpp)
-APP_OBJ = $(APP_SRC:App/src/%.cpp=$(BUILD_DIR)/app/%.o)
+# App sources - explicitly list each one
+APP_SRCS = \
+    App/src/main.cpp \
+    App/src/SonicPlayer.cpp \
+    App/src/TunnelSystem.cpp \
+    App/src/WhirlCircle.cpp
+
+APP_OBJ = $(APP_SRCS:App/src/%.cpp=$(BUILD_DIR)/app/%.o)
 
 # Target
 TARGET = $(BIN_DIR)/SonicGame

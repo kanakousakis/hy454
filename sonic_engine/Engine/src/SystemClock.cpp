@@ -11,4 +11,4 @@ SystemClock& SystemClock::Instance() {
     return *instance;
 }
 
-} // namespace engine
+}  //namespace engine

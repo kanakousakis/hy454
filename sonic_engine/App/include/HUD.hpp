@@ -10,9 +10,9 @@ using namespace engine;
 
 namespace app {
 
-// ============================================================
-// Score Popup - Floating score display when enemies killed/items collected
-// ============================================================
+//============================================================
+//score Popup - Floating score display when enemies killed/items collected
+//============================================================
 struct ScorePopup {
     float x, y;
     float velY = -2.0f;
@@ -29,7 +29,7 @@ struct ScorePopup {
         if (!active) return;
         
         y += velY;
-        velY *= 0.98f;  // Slow down
+        velY *= 0.98f;  //slow down
         
         if (GetSystemTime() - spawnTime > DURATION) {
             active = false;
@@ -42,10 +42,12 @@ struct ScorePopup {
         int screenX = static_cast<int>(x) - viewX;
         int screenY = static_cast<int>(y) - viewY;
         
-        // Skip if off screen
-        if (screenX < -50 || screenX > 690 || screenY < -20 || screenY > 500) return;
+//skip if off screen - use virtual resolution (320×224)
+        const int virtWidth = gfx.GetVirtualWidth();
+        const int virtHeight = gfx.GetVirtualHeight();
+        if (screenX < -50 || screenX > virtWidth || screenY < -20 || screenY > virtHeight) return;
         
-        // Calculate fade based on time
+//calculate fade based on time
         uint64_t elapsed = GetSystemTime() - spawnTime;
         int alpha = 255;
         if (elapsed > 800) {
@@ -53,23 +55,23 @@ struct ScorePopup {
             if (alpha < 0) alpha = 0;
         }
         
-        // Background
+//background
         int width = (value >= 1000) ? 40 : (value >= 100) ? 32 : 24;
         gfx.DrawRect({screenX - 2, screenY - 2, width + 4, 16}, 
                      MakeColor(0, 0, 0, alpha / 2), true);
         
-        // Score value color based on amount
+//score value color based on amount
         Color c;
         if (value >= 1000)
-            c = MakeColor(255, 50, 50, alpha);   // Red for 1000+
+            c = MakeColor(255, 50, 50, alpha);  //red for 1000+
         else if (value >= 500)
-            c = MakeColor(255, 150, 0, alpha);   // Orange for 500
+            c = MakeColor(255, 150, 0, alpha);  //orange for 500
         else if (value >= 200)
-            c = MakeColor(255, 255, 0, alpha);   // Yellow for 200
+            c = MakeColor(255, 255, 0, alpha);  //yellow for 200
         else
-            c = MakeColor(255, 255, 255, alpha); // White for 100
+            c = MakeColor(255, 255, 255, alpha);  //white for 100
         
-        // Draw digits
+//draw digits
         char buffer[8];
         snprintf(buffer, sizeof(buffer), "%d", value);
         int charWidth = 8;
@@ -85,7 +87,7 @@ private:
     
 public:
     void Spawn(float x, float y, int value) {
-        popups.emplace_back(x, y - 20, value);  // Start slightly above position
+        popups.emplace_back(x, y - 20, value);  //start slightly above position
     }
     
     void Update() {
@@ -93,7 +95,7 @@ public:
             popup.Update();
         }
         
-        // Remove inactive
+//remove inactive
         popups.erase(
             std::remove_if(popups.begin(), popups.end(),
                 [](const ScorePopup& p) { return !p.active; }),
@@ -110,30 +112,30 @@ public:
     void Clear() { popups.clear(); }
 };
 
-// ============================================================
-// HUD - Heads Up Display
-// Shows: Score, Time, Rings, Lives
-// ============================================================
+//============================================================
+//HUD - Heads Up Display
+//shows: Score, Time, Rings, Lives
+//============================================================
 class HUD {
 public:
-    // Game stats
+//game stats
     int score = 0;
     int rings = 0;
-    int lives = 3;
+//NOTE: lives removed - HUD gets this from sonic->GetLives() to avoid dual tracking
     int timeSeconds = 0;
     uint64_t levelStartTime = 0;
     bool timePaused = false;
     
-    // Display position
-    int hudX = 16;
-    int hudY = 8;
+//display position - NATIVE resolution (640×448)
+    int hudX = 10;
+    int hudY = 10;
     
-    // Ring flash animation (when rings are 0)
+//ring flash animation (when rings are 0)
     bool ringFlash = false;
     uint64_t lastFlashTime = 0;
     static constexpr uint64_t FLASH_INTERVAL = 500;
     
-    // Score popups manager
+//score popups manager
     ScorePopupManager popupManager;
     
     HUD() = default;
@@ -146,12 +148,11 @@ public:
     }
     
     void Update(uint64_t currentTime) {
-        // Update time
         if (!timePaused && levelStartTime > 0) {
             timeSeconds = static_cast<int>((currentTime - levelStartTime) / 1000);
         }
         
-        // Ring flash when at 0
+//ring flash when at 0
         if (rings == 0) {
             if (currentTime - lastFlashTime > FLASH_INTERVAL) {
                 ringFlash = !ringFlash;
@@ -161,14 +162,13 @@ public:
             ringFlash = false;
         }
         
-        // Update popups
         popupManager.Update();
     }
     
     void AddScore(int points, float worldX = 0, float worldY = 0) {
         score += points;
         
-        // Show popup if position given
+//show popup if position given
         if (worldX != 0 || worldY != 0) {
             popupManager.Spawn(worldX, worldY, points);
         }
@@ -176,87 +176,86 @@ public:
     
     void AddRings(int count) {
         rings += count;
-        // Check for extra life
-        if (rings >= 100) {
-            rings -= 100;
-            lives++;
-            // Could play 1-up sound here
-        }
+//NOTE: Extra life logic removed - should be handled in SonicPlayer
+//when rings are collected in main.cpp, check sonic->GetRings() there
     }
     
     void LoseRings() {
         rings = 0;
     }
     
+//NOTE: Lives functions removed - lives managed by SonicPlayer only
     void LoseLife() {
-        if (lives > 0) {
-            lives--;
-        }
+//disabled - use sonic->LoseLife() instead
     }
     
     void GainLife() {
-        lives++;
+//disabled - use sonic->AddLife() instead
     }
     
     bool IsGameOver() const {
-        return lives <= 0;
+//disabled - game over checked in death handler using sonic->GetLives()
+        return false;
     }
     
     void PauseTime() { timePaused = true; }
     void ResumeTime() { timePaused = false; }
     
-    // Draw the HUD
-    void Draw(Graphics& gfx, int viewX = 0, int viewY = 0) {
-        // Background panels
-        Color panelColor = MakeColor(0, 0, 0, 180);
+//draw the HUD at native 640×448 resolution
+    void Draw(Graphics& gfx, SonicPlayer* sonic, int viewX = 0, int viewY = 0) {
+        if (!sonic) return;
+        int lives = sonic->GetLives();
         
-        // === LEFT PANEL: Score, Time, Rings ===
-        gfx.DrawRect({hudX - 4, hudY - 4, 180, 72}, panelColor, true);
+        Color bg = MakeColor(0, 0, 0, 200);
         
-        // SCORE
-        DrawLabel(gfx, hudX, hudY, "SCORE", MakeColor(255, 255, 0));
-        DrawNumber(gfx, hudX + 70, hudY, score, 6, MakeColor(255, 255, 255));
+//main HUD panel - BIGGER to fit 6-digit score
+        gfx.DrawRect({10, 10, 180, 70}, bg, true);
+        gfx.DrawRect({10, 10, 180, 70}, MakeColor(255, 255, 255, 50), false);
         
-        // TIME
-        DrawLabel(gfx, hudX, hudY + 20, "TIME", MakeColor(255, 255, 0));
+//SCORE
+        gfx.DrawText("SCORE", 20, 20, MakeColor(255, 255, 0));
+        DrawNumber(gfx, 100, 20, score, 6, MakeColor(255, 255, 255));
+        
+//TIME
+        gfx.DrawText("TIME", 20, 40, MakeColor(255, 255, 0));
         int minutes = timeSeconds / 60;
         int seconds = timeSeconds % 60;
-        DrawTime(gfx, hudX + 70, hudY + 20, minutes, seconds, MakeColor(255, 255, 255));
+        DrawTime(gfx, 100, 40, minutes, seconds, MakeColor(255, 255, 255));
         
-        // RINGS
-        Color ringLabelColor = ringFlash ? MakeColor(255, 0, 0) : MakeColor(255, 255, 0);
-        DrawLabel(gfx, hudX, hudY + 40, "RINGS", ringLabelColor);
-        DrawNumber(gfx, hudX + 70, hudY + 40, rings, 3, MakeColor(255, 255, 255));
+//RINGS
+        Color ringColor = ringFlash ? MakeColor(255, 0, 0) : MakeColor(255, 255, 0);
+        gfx.DrawText("RINGS", 20, 60, ringColor);
+        DrawNumber(gfx, 100, 60, rings, 3, MakeColor(255, 255, 255));
         
-        // === LIVES (bottom left) ===
-        int livesY = 480 - 40;  // Near bottom
-        gfx.DrawRect({hudX - 4, livesY - 4, 60, 28}, panelColor, true);
+//lives (bottom-left)
+        gfx.DrawRect({10, 410, 80, 30}, bg, true);
+        gfx.DrawRect({10, 410, 80, 30}, MakeColor(255, 255, 255, 50), false);
         
-        // Sonic icon placeholder (small blue circle)
-        gfx.DrawRect({hudX, livesY, 16, 16}, MakeColor(0, 100, 255), true);
+//sonic icon
+        gfx.DrawRect({15, 415, 20, 20}, MakeColor(0, 100, 255), true);
         
-        // "x" and number
-        DrawLabel(gfx, hudX + 20, livesY, "x", MakeColor(255, 255, 255));
-        DrawNumber(gfx, hudX + 32, livesY, lives, 1, MakeColor(255, 255, 255));
+//"x" and lives count
+        gfx.DrawText("x", 40, 418, MakeColor(255, 255, 255));
+        DrawNumber(gfx, 55, 418, lives, 1, MakeColor(255, 255, 255));
         
-        // === SCORE POPUPS ===
+//score popups still use world coordinates
         popupManager.Draw(gfx, viewX, viewY);
     }
     
 private:
-    // Simple label drawing using rectangles (placeholder for text)
+//simple label drawing using rectangles (placeholder for text)
     void DrawLabel(Graphics& gfx, int x, int y, const std::string& label, Color c) {
         gfx.DrawText(label, x, y, c);
     }
     
-    // Draw a number with leading zeros
+//draw a number with leading zeros
     void DrawNumber(Graphics& gfx, int x, int y, int number, int digits, Color c) {
         char buffer[16];
         snprintf(buffer, sizeof(buffer), "%0*d", digits, number);
         gfx.DrawText(buffer, x, y, c);
     }
     
-    // Draw time in M:SS format
+//draw time in M:SS format
     void DrawTime(Graphics& gfx, int x, int y, int minutes, int seconds, Color c) {
         char buffer[16];
         snprintf(buffer, sizeof(buffer), "%d:%02d", minutes, seconds);
@@ -264,6 +263,6 @@ private:
     }
 };
 
-} // namespace app
+}  //namespace app
 
-#endif // HUD_HPP
+#endif  //HUD_HPP

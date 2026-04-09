@@ -1,5 +1,5 @@
 #include "Input.hpp"
-#include "Bitmap.hpp"  // For Graphics::Instance()
+#include "Bitmap.hpp"  //for Graphics::Instance()
 #include <cstring>
 
 namespace engine {
@@ -194,4 +194,4 @@ bool InputManager::IsMouseJustReleased(MouseButton btn) const {
     return false;
 }
 
-} // namespace engine
+}  //namespace engine

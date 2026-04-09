@@ -35,7 +35,7 @@ public:
     }
 };
 
-// Convenience functions
+//convenience functions
 inline timestamp_t GetSystemTime() { 
     return SystemClock::Instance().GetMillis(); 
 }
@@ -44,4 +44,4 @@ inline timestamp_t GetGameTime() {
     return SystemClock::Instance().GetMillis(); 
 }
 
-} // namespace engine
+}  //namespace engine

@@ -1,0 +1,39 @@
+# Build outputs
+/build/
+/bin/
+
+# Object and binary artifacts
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+*.exe
+*.out
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake-build-*/
+compile_commands.json
+install_manifest.txt
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Local tooling
+.claude/
+
+fix_terrain.py
+nul
+1
+!

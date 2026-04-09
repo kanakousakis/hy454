@@ -44,7 +44,7 @@ public:
     virtual ~Animator();
 };
 
-// Moving animator
+//moving animator
 class MovingAnimator : public Animator {
 protected:
     MovingAnimation* anim = nullptr;
@@ -60,7 +60,7 @@ public:
     MovingAnimator() = default;
 };
 
-// Frame range animator
+//frame range animator
 class FrameRangeAnimator : public Animator {
 protected:
     FrameRangeAnimation* anim = nullptr;
@@ -79,7 +79,7 @@ public:
     FrameRangeAnimator() = default;
 };
 
-// Frame list animator
+//frame list animator
 class FrameListAnimator : public Animator {
 protected:
     FrameListAnimation* anim = nullptr;
@@ -98,7 +98,7 @@ public:
     FrameListAnimator() = default;
 };
 
-// Flash animator for invincibility
+//flash animator for invincibility
 class FlashAnimator : public Animator {
 protected:
     FlashAnimation* anim = nullptr;
@@ -116,7 +116,7 @@ public:
     FlashAnimator() = default;
 };
 
-// Tick animator for timers
+//tick animator for timers
 class TickAnimator : public Animator {
 protected:
     TickAnimation* anim = nullptr;
@@ -134,7 +134,7 @@ public:
     TickAnimator() = default;
 };
 
-// Animator manager singleton
+//animator manager singleton
 class AnimatorManager {
 private:
     std::set<Animator*> running;
@@ -158,6 +158,6 @@ public:
     size_t GetSuspendedCount() const { return suspended.size(); }
 };
 
-} // namespace engine
+}  //namespace engine
 
-#endif // ENGINE_ANIMATOR_HPP
+#endif  //ENGINE_ANIMATOR_HPP

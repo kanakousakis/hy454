@@ -7,7 +7,7 @@
 
 namespace engine {
 
-// Base animation class
+//base animation class
 class Animation {
 protected:
     std::string id;
@@ -22,10 +22,10 @@ public:
     virtual ~Animation() {}
 };
 
-// Moving animation - basic movement with delay
+//moving animation - basic movement with delay
 class MovingAnimation : public Animation {
 protected:
-    unsigned reps = 1;    // 0 = forever
+    unsigned reps = 1;  //0 = forever
     int dx = 0, dy = 0;
     unsigned delay = 0;
     
@@ -52,7 +52,7 @@ public:
         : Animation(_id), reps(_reps), dx(_dx), dy(_dy), delay(_delay) {}
 };
 
-// Frame range animation - cycles through frame range
+//frame range animation - cycles through frame range
 class FrameRangeAnimation : public MovingAnimation {
 protected:
     unsigned start = 0;
@@ -75,7 +75,7 @@ public:
         : MovingAnimation(_id, r, dx, dy, d), start(s), end(e) {}
 };
 
-// Frame list animation - explicit frame sequence
+//frame list animation - explicit frame sequence
 class FrameListAnimation : public MovingAnimation {
 public:
     using Frames = std::vector<unsigned>;
@@ -96,7 +96,7 @@ public:
         : MovingAnimation(_id, r, dx, dy, d), frames(_frames) {}
 };
 
-// Path entry for moving path animation
+//path entry for moving path animation
 struct PathEntry {
     int dx = 0, dy = 0;
     unsigned frame = 0;
@@ -107,7 +107,7 @@ struct PathEntry {
         : dx(_dx), dy(_dy), frame(_frame), delay(_delay) {}
 };
 
-// Moving path animation - follows a path
+//moving path animation - follows a path
 class MovingPathAnimation : public Animation {
 public:
     using Path = std::vector<PathEntry>;
@@ -127,7 +127,7 @@ public:
         : Animation(_id), path(_path) {}
 };
 
-// Flash animation - for invincibility effect
+//flash animation - for invincibility effect
 class FlashAnimation : public Animation {
 private:
     unsigned repetitions = 0;
@@ -153,7 +153,7 @@ public:
         : Animation(_id), repetitions(n), hideDelay(hide), showDelay(show) {}
 };
 
-// Tick animation - for timers
+//tick animation - for timers
 class TickAnimation : public Animation {
 protected:
     unsigned delay = 0;
@@ -181,6 +181,6 @@ public:
         : Animation(_id), delay(d), reps(r), isDiscrete(discrete) {}
 };
 
-} // namespace engine
+}  //namespace engine
 
-#endif // ENGINE_ANIMATION_HPP
+#endif  //ENGINE_ANIMATION_HPP

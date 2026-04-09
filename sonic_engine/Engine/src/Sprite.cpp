@@ -6,27 +6,27 @@
 
 namespace engine {
 
-// ============================================================================
-// Static instance pointers
-// ============================================================================
+//============================================================================
+//static instance pointers
+//============================================================================
 SpriteManager* SpriteManager::instance = nullptr;
 CollisionChecker* CollisionChecker::instance = nullptr;
 
-// ============================================================================
-// BoundingBox Implementation
-// ============================================================================
+//============================================================================
+//boundingBox Implementation
+//============================================================================
 bool BoundingBox::Intersects(const BoundingArea& area) const {
-    // Try to cast to BoundingBox
+//try to cast to BoundingBox
     if (auto* other = dynamic_cast<const BoundingBox*>(&area)) {
         return BoxesOverlap(box, other->box);
     }
-    // Try to cast to BoundingCircle
+//try to cast to BoundingCircle
     if (auto* circle = dynamic_cast<const BoundingCircle*>(&area)) {
-        // Box-circle intersection
+//box-circle intersection
         const Point& c = circle->GetCenter();
         int r = circle->GetRadius();
         
-        // Find closest point on box to circle center
+//find closest point on box to circle center
         int closestX = std::max(box.x, std::min(c.x, box.x + box.w));
         int closestY = std::max(box.y, std::min(c.y, box.y + box.h));
         
@@ -38,27 +38,27 @@ bool BoundingBox::Intersects(const BoundingArea& area) const {
     return false;
 }
 
-// ============================================================================
-// BoundingCircle Implementation
-// ============================================================================
+//============================================================================
+//boundingCircle Implementation
+//============================================================================
 bool BoundingCircle::Intersects(const BoundingArea& area) const {
-    // Try to cast to BoundingCircle
+//try to cast to BoundingCircle
     if (auto* other = dynamic_cast<const BoundingCircle*>(&area)) {
         int dx = center.x - other->center.x;
         int dy = center.y - other->center.y;
         int sumR = radius + other->radius;
         return (dx * dx + dy * dy) <= (sumR * sumR);
     }
-    // Try to cast to BoundingBox (delegate)
+//try to cast to BoundingBox (delegate)
     if (auto* box = dynamic_cast<const BoundingBox*>(&area)) {
         return box->Intersects(*this);
     }
     return false;
 }
 
-// ============================================================================
-// Sprite Implementation
-// ============================================================================
+//============================================================================
+//sprite Implementation
+//============================================================================
 Sprite::Sprite(int _x, int _y, AnimationFilm* film, const std::string& _typeId)
     : x(_x), y(_y), currFilm(film), typeId(_typeId) {
     if (currFilm && currFilm->GetTotalFrames() > 0) {
@@ -75,15 +75,15 @@ bool Sprite::CollisionCheck(const Sprite* s) const {
     if (!s || !isVisible || !s->isVisible)
         return false;
     
-    // Quick bounding box test first
+//quick bounding box test first
     if (NoBoxOverlap(GetBox(), s->GetBox()))
         return false;
     
-    // If we have bounding areas, use those for precise collision
+//if we have bounding areas, use those for precise collision
     if (boundingArea && s->boundingArea)
         return boundingArea->Intersects(*s->boundingArea);
     
-    // Bounding boxes overlap = collision
+//bounding boxes overlap = collision
     return true;
 }
 
@@ -96,7 +96,7 @@ void Sprite::Display(const Rect& dpyArea, const Clipper& clipper) const {
     
     if (clipper.Clip(GetBox(), dpyArea, &dpyPos, &clippedBox)) {
         if (clippedBox.w > 0 && clippedBox.h > 0) {
-            // Source rectangle in the film's bitmap
+//source rectangle in the film's bitmap
             const Rect& srcFrame = currFilm->GetFrameBox(frameNo);
             Rect srcRect = {
                 srcFrame.x + clippedBox.x,
@@ -105,7 +105,7 @@ void Sprite::Display(const Rect& dpyArea, const Clipper& clipper) const {
                 clippedBox.h
             };
             
-            // Draw the clipped portion
+//draw the clipped portion
             BitmapPtr bmp = currFilm->GetBitmap();
             if (bmp) {
                 GetGraphics().DrawTexture(bmp->GetTexture(), srcRect, dpyPos);
@@ -114,9 +114,9 @@ void Sprite::Display(const Rect& dpyArea, const Clipper& clipper) const {
     }
 }
 
-// ============================================================================
-// SpriteManager Implementation
-// ============================================================================
+//============================================================================
+//spriteManager Implementation
+//============================================================================
 SpriteManager& SpriteManager::Instance() {
     if (!instance) {
         instance = new SpriteManager();
@@ -127,13 +127,13 @@ SpriteManager& SpriteManager::Instance() {
 void SpriteManager::Add(Sprite* s) {
     if (!s) return;
     
-    // Insert in z-order (ascending)
+//insert in z-order (ascending)
     auto it = std::find_if(dpyList.begin(), dpyList.end(),
         [s](Sprite* other) { return other->GetZorder() > s->GetZorder(); }
     );
     dpyList.insert(it, s);
     
-    // Add to type list
+//add to type list
     if (!s->GetTypeId().empty()) {
         types[s->GetTypeId()].push_back(s);
     }
@@ -163,9 +163,9 @@ void SpriteManager::Clear() {
     types.clear();
 }
 
-// ============================================================================
-// CollisionChecker Implementation
-// ============================================================================
+//============================================================================
+//collisionChecker Implementation
+//============================================================================
 CollisionChecker& CollisionChecker::Instance() {
     if (!instance) {
         instance = new CollisionChecker();
@@ -203,7 +203,7 @@ void CollisionChecker::CancelAll(Sprite* s) {
 }
 
 void CollisionChecker::Check() {
-    // Make a copy to allow modifications during iteration
+//make a copy to allow modifications during iteration
     auto entriesCopy = entries;
     
     for (const auto& e : entriesCopy) {
@@ -215,9 +215,9 @@ void CollisionChecker::Check() {
     }
 }
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
+//============================================================================
+//helper Functions
+//============================================================================
 Sprite::Mover MakeGridLayerMover(GridLayer* grid) {
     return [grid](const Rect& r, int* dx, int* dy) {
         grid->FilterGridMotion(r, dx, dy);
@@ -233,4 +233,4 @@ void PrepareSpriteGravityHandler(GridLayer* grid, Sprite* sprite) {
     sprite->GetGravityHandler().SetGravityAddicted(true);
 }
 
-} // namespace engine
+}  //namespace engine

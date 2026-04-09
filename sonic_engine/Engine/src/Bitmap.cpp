@@ -1,13 +1,15 @@
 #include "Bitmap.hpp"
+#include <iostream>
 #include <cassert>
+#include <algorithm>
 
 namespace engine {
 
-// Static instance pointers
+//static instance pointers
 Graphics* Graphics::instance = nullptr;
 BitmapLoader* BitmapLoader::instance = nullptr;
 
-// ============ Bitmap Implementation ============
+//============ Bitmap Implementation ============
 
 Bitmap::Bitmap(Dim w, Dim h) {
     Create(w, h);
@@ -24,6 +26,10 @@ bool Bitmap::LoadFromFile(const std::string& path) {
     if (!texture.loadFromImage(image))
         return false;
     
+//pixel-perfect rendering settings
+    texture.setSmooth(false);  //no interpolation
+    texture.setRepeated(false);  //clamp to edge
+    
     auto size = image.getSize();
     width = static_cast<Dim>(size.x);
     height = static_cast<Dim>(size.y);
@@ -35,6 +41,8 @@ bool Bitmap::Create(Dim w, Dim h) {
     image.create(w, h, sf::Color::Transparent);
     if (!texture.loadFromImage(image))
         return false;
+    
+    texture.setSmooth(false);
     
     width = w;
     height = h;
@@ -77,6 +85,7 @@ void Bitmap::Clear(Color c) {
 void Bitmap::UpdateTexture() {
     if (hasImage) {
         texture.loadFromImage(image);
+        texture.setSmooth(false);  //maintain pixel-perfect rendering
     }
 }
 
@@ -126,7 +135,7 @@ void Bitmap::BlitMasked(const Rect& src, Bitmap& dest, const Point& destPos,
     }
 }
 
-// ============ Graphics Implementation ============
+//============ Graphics Implementation ============
 
 Graphics& Graphics::Instance() {
     if (!instance) {
@@ -139,18 +148,81 @@ bool Graphics::Init(Dim width, Dim height, const std::string& title) {
     if (initialized)
         return true;
     
+//store windowed dimensions and title
+    windowedWidth = width;
+    windowedHeight = height;
+    windowTitle = title;
+    isFullscreen = false;
+    
     window.create(sf::VideoMode(width, height), title);
     
-    // Use VSync for smooth rendering (better than hard frame limit)
-    window.setVerticalSyncEnabled(true);
-    // Keep frame limit as fallback
+//frame limiting for consistent speed (60 FPS)
+    window.setVerticalSyncEnabled(false);
     window.setFramerateLimit(60);
     
+//create backbuffer at window size initially
+//(will be changed by SetVirtualResolution if called)
     if (!backBuffer.create(width, height))
         return false;
     
+//CRITICAL: Disable smoothing for pixel-perfect rendering
+    backBuffer.setSmooth(false);
+    
+//default virtual resolution = window size
+    virtualWidth = width;
+    virtualHeight = height;
+    
     initialized = true;
+    
+    std::cout << "Graphics initialized: " << width << "x" << height << std::endl;
+    
     return true;
+}
+
+void Graphics::ToggleFullscreen() {
+    if (!initialized) return;
+    
+    window.close();
+    isFullscreen = !isFullscreen;
+    
+    if (isFullscreen) {
+//switch to fullscreen at desktop resolution
+        auto desktop = sf::VideoMode::getDesktopMode();
+        window.create(desktop, windowTitle, sf::Style::Fullscreen);
+        std::cout << "Fullscreen: " << desktop.width << "x" << desktop.height << std::endl;
+    } else {
+//switch back to windowed mode
+        window.create(sf::VideoMode(windowedWidth, windowedHeight), windowTitle);
+        std::cout << "Windowed: " << windowedWidth << "x" << windowedHeight << std::endl;
+    }
+    
+//CRITICAL: Reset view to default for new window
+    window.setView(window.getDefaultView());
+
+//use different settings for fullscreen vs windowed
+    if (isFullscreen) {
+//fullscreen: use VSync for smoother performance at high resolutions
+        window.setVerticalSyncEnabled(true);
+        window.setFramerateLimit(0);  //disable frame limit when using VSync
+    } else {
+//windowed: use frame limit for consistent 60 FPS
+        window.setVerticalSyncEnabled(false);
+        window.setFramerateLimit(60);
+    }
+}
+
+//set virtual resolution for scaling (call after Init)
+void Graphics::SetVirtualResolution(Dim vWidth, Dim vHeight) {
+    virtualWidth = vWidth;
+    virtualHeight = vHeight;
+    
+//recreate backbuffer at virtual resolution
+    backBuffer.create(vWidth, vHeight);
+    
+//CRITICAL: Disable smoothing for pixel-perfect upscaling
+    backBuffer.setSmooth(false);
+    
+    std::cout << "Virtual resolution: " << vWidth << "x" << vHeight << std::endl;
 }
 
 void Graphics::Shutdown() {
@@ -177,11 +249,114 @@ void Graphics::Clear(Color c) {
 }
 
 void Graphics::Present() {
+    window.setActive(true);
     backBuffer.display();
     
+//get sizes
+    float winW = static_cast<float>(window.getSize().x);
+    float winH = static_cast<float>(window.getSize().y);
+    float bufW = static_cast<float>(backBuffer.getSize().x);
+    float bufH = static_cast<float>(backBuffer.getSize().y);
+    
+//CRITICAL: Set view to match window pixels 1:1 (fixes fullscreen positioning)
+    sf::View pixelView(sf::FloatRect(0, 0, winW, winH));
+    window.setView(pixelView);
+    
+//calculate integer scale (pixel-perfect)
+    int scaleX = static_cast<int>(winW / bufW);
+    int scaleY = static_cast<int>(winH / bufH);
+    int scale = std::max(1, std::min(scaleX, scaleY));
+    
+//store scale for native rendering
+    nativeScale = scale;
+    nativeOffsetX = (winW - bufW * scale) / 2.0f;
+    nativeOffsetY = (winH - bufH * scale) / 2.0f;
+    
+//scaled dimensions
+    float scaledW = bufW * static_cast<float>(scale);
+    float scaledH = bufH * static_cast<float>(scale);
+    
+//center position
+    float posX = (winW - scaledW) / 2.0f;
+    float posY = (winH - scaledH) / 2.0f;
+    
+//create and position sprite
     sf::Sprite bufferSprite(backBuffer.getTexture());
-    window.clear();
+    bufferSprite.setScale(static_cast<float>(scale), static_cast<float>(scale));
+    bufferSprite.setPosition(posX, posY);
+    
+//clear and draw game
+    window.clear(sf::Color::Black);
     window.draw(bufferSprite);
+//don't display yet - allow native rendering
+}
+
+void Graphics::DrawNativeText(const std::string& text, int x, int y, Color c) {
+//draw text directly to window at native resolution
+//x, y are in WINDOW coordinates (640x448), not virtual
+//add offset to account for letterboxing
+    float realX = nativeOffsetX + static_cast<float>(x);
+    float realY = nativeOffsetY + static_cast<float>(y);
+    
+    if (!fontLoaded) {
+        const char* fontPaths[] = {
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf"
+        };
+        for (const char* path : fontPaths) {
+            if (defaultFont.loadFromFile(path)) {
+                fontLoaded = true;
+                break;
+            }
+        }
+    }
+    
+    if (fontLoaded) {
+        sf::Text sfText;
+        sfText.setFont(defaultFont);
+        sfText.setString(text);
+        sfText.setCharacterSize(14);  //native size
+        sfText.setFillColor(sf::Color(GetRed(c), GetGreen(c), GetBlue(c), GetAlpha(c)));
+        sfText.setPosition(realX, realY);
+        window.draw(sfText);
+    }
+}
+
+void Graphics::DrawNativeRect(const Rect& r, Color c, bool filled) {
+//draw rect directly to window at native resolution
+//coordinates are in WINDOW space (640x448)
+    float realX = nativeOffsetX + static_cast<float>(r.x);
+    float realY = nativeOffsetY + static_cast<float>(r.y);
+    float realW = static_cast<float>(r.w);
+    float realH = static_cast<float>(r.h);
+
+    sf::RectangleShape rect(sf::Vector2f(realW, realH));
+    rect.setPosition(realX, realY);
+    if (filled) {
+        rect.setFillColor(sf::Color(GetRed(c), GetGreen(c), GetBlue(c), GetAlpha(c)));
+        rect.setOutlineThickness(0);
+    } else {
+        rect.setFillColor(sf::Color::Transparent);
+        rect.setOutlineColor(sf::Color(GetRed(c), GetGreen(c), GetBlue(c), GetAlpha(c)));
+        rect.setOutlineThickness(1);
+    }
+    window.draw(rect);
+}
+
+void Graphics::DrawNativeSprite(const sf::Sprite& sprite, int x, int y) {
+//draw sprite directly to window at native resolution
+//x, y are in WINDOW coordinates (640x448), not virtual
+//add offset to account for letterboxing
+    float realX = nativeOffsetX + static_cast<float>(x);
+    float realY = nativeOffsetY + static_cast<float>(y);
+
+    sf::Sprite nativeSprite = sprite;
+    nativeSprite.setPosition(realX, realY);
+    window.draw(nativeSprite);
+}
+
+void Graphics::FinalDisplay() {
     window.display();
 }
 
@@ -218,7 +393,7 @@ void Graphics::DrawTextureScaled(const sf::Texture& tex, const Rect& src, const 
     sprite.setTextureRect(sf::IntRect(src.x, src.y, src.w, src.h));
     sprite.setPosition(static_cast<float>(dest.x), static_cast<float>(dest.y));
     
-    // Scale to fit destination rect
+//scale to fit destination rect
     float scaleX = static_cast<float>(dest.w) / static_cast<float>(src.w);
     float scaleY = static_cast<float>(dest.h) / static_cast<float>(src.h);
     sprite.setScale(scaleX, scaleY);
@@ -227,9 +402,8 @@ void Graphics::DrawTextureScaled(const sf::Texture& tex, const Rect& src, const 
 }
 
 void Graphics::DrawText(const std::string& text, int x, int y, Color c) {
-    // Try to load font if not loaded
+//try to load font if not loaded
     if (!fontLoaded) {
-        // Try common font locations
         const char* fontPaths[] = {
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
@@ -250,23 +424,24 @@ void Graphics::DrawText(const std::string& text, int x, int y, Color c) {
         sf::Text sfText;
         sfText.setFont(defaultFont);
         sfText.setString(text);
-        sfText.setCharacterSize(14);
+        sfText.setCharacterSize(8);  //for 160x112 resolution
         sfText.setFillColor(sf::Color(GetRed(c), GetGreen(c), GetBlue(c), GetAlpha(c)));
         sfText.setPosition(static_cast<float>(x), static_cast<float>(y));
         backBuffer.draw(sfText);
     } else {
-        // Fallback: draw text as rectangles (one per character)
-        int charWidth = 8;
-        int charHeight = 12;
+//fallback: draw rectangles for each character
+        int charWidth = 4;
+        int charHeight = 6;
+        
         for (size_t i = 0; i < text.size(); ++i) {
             if (text[i] != ' ') {
-                DrawRect({x + static_cast<int>(i) * charWidth, y, charWidth - 2, charHeight}, c, true);
+                DrawRect({x + static_cast<int>(i) * charWidth, y, charWidth - 1, charHeight}, c, true);
             }
         }
     }
 }
 
-// ============ BitmapLoader Implementation ============
+//============ BitmapLoader Implementation ============
 
 BitmapLoader& BitmapLoader::Instance() {
     if (!instance) {
@@ -306,4 +481,4 @@ BitmapPtr BitmapLoader::GetBitmap(const std::string& path) const {
     return (it != cache.end()) ? it->second : nullptr;
 }
 
-} // namespace engine
+}  //namespace engine

@@ -2,101 +2,372 @@
 #define ENEMY_HPP
 
 #include "Engine.hpp"
+#include "ResourceManager.hpp"
+#include "SpriteSheetConfig.hpp"
 #include <functional>
 #include <cmath>
+#include <vector>
+#include <memory>
+#include <algorithm>
 
 namespace app {
 
-// Forward declaration
-class SonicPlayer;
+struct SpriteFrame {
+    int x, y, w, h;
+};
 
-// Base enemy class
+namespace EnemyFrames {
+//=== EXISTING ENEMIES ===
+    inline SpriteFrame GetCrabmeatWalk(int index) {
+        auto anims = EnemySpriteConfig::GetCrabmeatAnimations();
+        auto& frames = anims[0].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+    inline SpriteFrame GetCrabmeatAttack(int index) {
+        auto anims = EnemySpriteConfig::GetCrabmeatAnimations();
+        auto& frames = anims[1].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+    inline SpriteFrame GetBuzzBomberFly(int index) {
+        auto anims = EnemySpriteConfig::GetBuzzBomberAnimations();
+        auto& frames = anims[0].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+    inline SpriteFrame GetBuzzBomberShoot() {
+        auto anims = EnemySpriteConfig::GetBuzzBomberAnimations();
+        auto& f = anims[1].frames[0];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+    inline SpriteFrame GetMotobugBody(int index) {
+        auto anims = EnemySpriteConfig::GetMotobugAnimations();
+        auto& frames = anims[0].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+    inline SpriteFrame GetMasher(int index) {
+        auto anims = EnemySpriteConfig::GetMasherAnimations();
+        auto& frames = anims[1].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+//=== NEW ENEMIES ===
+    
+//newtron Blue (camouflage enemy)
+    inline SpriteFrame GetNewtronBlue(int index) {
+        auto anims = EnemySpriteConfig::GetNewtronBlueAnimations();
+        if (anims.empty() || anims[0].frames.empty()) return {0,0,32,32};
+        auto& frames = anims[0].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+//newtron Green (rocket launcher)
+    inline SpriteFrame GetNewtronGreen(int index) {
+        auto anims = EnemySpriteConfig::GetNewtronGreenAnimations();
+        if (anims.empty() || anims[0].frames.empty()) return {0,0,32,32};
+        auto& frames = anims[0].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+//bomb (walking bomb enemy)
+    inline SpriteFrame GetBombWalk(int index) {
+        auto anims = EnemySpriteConfig::GetBombAnimations();
+        if (anims.empty() || anims[0].frames.empty()) return {0,0,24,32};
+        auto& frames = anims[0].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+    inline SpriteFrame GetBombExplode(int index) {
+        auto anims = EnemySpriteConfig::GetBombAnimations();
+        if (anims.size() < 2 || anims[1].frames.empty()) return {0,0,32,32};
+        auto& frames = anims[1].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+//caterkiller (segmented worm)
+    inline SpriteFrame GetCaterkillerHead(int index) {
+        auto anims = EnemySpriteConfig::GetCaterkillerAnimations();
+        if (anims.empty() || anims[0].frames.empty()) return {0,0,16,16};
+        auto& frames = anims[0].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+    inline SpriteFrame GetCaterkillerBody(int index) {
+        auto anims = EnemySpriteConfig::GetCaterkillerAnimations();
+        if (anims.size() < 2 || anims[1].frames.empty()) return {0,0,16,16};
+        auto& frames = anims[1].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+//batbrain (flying bat)
+    inline SpriteFrame GetBatbrain(int index) {
+        auto anims = EnemySpriteConfig::GetBatbrainAnimations();
+        if (anims.empty() || anims[0].frames.empty()) return {0,0,32,24};
+        auto& frames = anims[0].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+//burrobot (digging robot)
+    inline SpriteFrame GetBurrobot(int index) {
+        auto anims = EnemySpriteConfig::GetBurrobotAnimations();
+        if (anims.empty() || anims[0].frames.empty()) return {0,0,32,32};
+        auto& frames = anims[0].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+//roller (rolling armadillo)
+    inline SpriteFrame GetRoller(int index) {
+        auto anims = EnemySpriteConfig::GetRollerAnimations();
+        if (anims.empty() || anims[0].frames.empty()) return {0,0,32,32};
+        auto& frames = anims[0].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+//jaws (fish enemy)
+    inline SpriteFrame GetJaws(int index) {
+        auto anims = EnemySpriteConfig::GetJawsAnimations();
+        if (anims.empty() || anims[0].frames.empty()) return {0,0,32,24};
+        auto& frames = anims[0].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+//orbinaut (spiked ball shooter)
+    inline SpriteFrame GetOrbinaut(int index) {
+        auto anims = EnemySpriteConfig::GetOrbinautAnimations();
+        if (anims.empty() || anims[0].frames.empty()) return {0,0,32,32};
+        auto& frames = anims[0].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+//ballHog (bomb thrower)
+    inline SpriteFrame GetBallHog(int index) {
+        auto anims = EnemySpriteConfig::GetBallHogAnimations();
+        if (anims.empty() || anims[0].frames.empty()) return {0,0,32,32};
+        auto& frames = anims[0].frames;
+        auto& f = frames[index % frames.size()];
+        return {f.x, f.y, f.w, f.h};
+    }
+    
+//projectile frames
+    constexpr SpriteFrame CRABMEAT_PROJECTILE = {282, 35, 12, 12};
+    constexpr SpriteFrame BUZZBOMBER_PROJECTILE = {120, 150, 16, 16};
+    constexpr SpriteFrame BOMB_PROJECTILE = {145, 590, 16, 16};  //ballHog cannonball
+    
+    constexpr SpriteFrame MOTOBUG_EXHAUST[] = {
+        {270, 105, 6, 6},
+        {268, 121, 10, 10},
+        {266, 139, 14, 12},
+    };
+    constexpr int MOTOBUG_EXHAUST_COUNT = 3;
+    constexpr int MOTOBUG_BODY_COUNT = 2;
+    constexpr int BUZZBOMBER_FLY_COUNT = 2;
+}
+
+//============================================================================
+//PROJECTILE SYSTEM
+//============================================================================
+
+class Projectile {
+public:
+    float x, y;
+    float velX, velY;
+    float gravity;
+    
+    enum class Type { Crabmeat, BuzzBomber };
+    Type type;
+    
+    int width, height;
+    bool active = true;
+    bool facingRight = false;
+    uint64_t spawnTime;
+    
+    Projectile(float px, float py, float vx, float vy, float g, Type t, int w, int h, bool facing = false)
+        : x(px), y(py), velX(vx), velY(vy), gravity(g), type(t), width(w), height(h), facingRight(facing) {
+        spawnTime = engine::GetSystemTime();
+    }
+    
+    void Update() {
+        if (!active) return;
+        velY += gravity;
+        x += velX;
+        y += velY;
+        if (engine::GetSystemTime() - spawnTime > 3000 || y > 2000 || y < -100) {
+            active = false;
+        }
+    }
+    
+    engine::Rect GetBounds() const {
+        return {static_cast<int>(x), static_cast<int>(y), width, height};
+    }
+};
+
+class ProjectileManager {
+private:
+    std::vector<Projectile> projectiles;
+    static constexpr size_t MAX_PROJECTILES = 30;
+    ProjectileManager() = default;
+    
+public:
+    static ProjectileManager& Instance() {
+        static ProjectileManager instance;
+        return instance;
+    }
+    
+//crabmeat shoots TWO projectiles - one from each claw
+    void SpawnCrabmeatBullets(float x, float y, int width, bool /*facingRight*/) {
+        if (projectiles.size() >= MAX_PROJECTILES - 1) return;
+        
+//left projectile goes left-up arc
+//right projectile goes right-up arc
+//these always shoot in both directions regardless of facing
+        projectiles.emplace_back(x - 4, y + 4, -2.5f, -4.5f, 0.18f, 
+                                 Projectile::Type::Crabmeat, 12, 12);
+        projectiles.emplace_back(x + width - 8, y + 4, 2.5f, -4.5f, 0.18f, 
+                                 Projectile::Type::Crabmeat, 12, 12);
+    }
+    
+//buzzBomber shoots ONE projectile toward player
+    void SpawnBuzzBomberBullet(float x, float y, float targetX, float targetY, bool facingRight) {
+        if (projectiles.size() >= MAX_PROJECTILES) return;
+        
+        float dx = targetX - x;
+        float dy = (targetY + 16) - y;
+        float dist = std::sqrt(dx*dx + dy*dy);
+        if (dist < 1.0f) dist = 1.0f;
+        
+        float speed = 3.5f;
+//spawn from front of bee based on facing direction
+        float spawnX = facingRight ? (x + 40) : (x + 8);
+        projectiles.emplace_back(spawnX, y + 24, (dx/dist)*speed, (dy/dist)*speed, 0.0f, 
+                                 Projectile::Type::BuzzBomber, 16, 16, facingRight);
+    }
+    
+    void Update() {
+        for (auto& p : projectiles) p.Update();
+        projectiles.erase(std::remove_if(projectiles.begin(), projectiles.end(),
+            [](const Projectile& p) { return !p.active; }), projectiles.end());
+    }
+    
+    void Render(const engine::Rect& viewWindow) {
+        auto& gfx = engine::GetGraphics();
+        auto& rm = ResourceManager::Instance();
+        auto sheet = rm.GetEnemiesSheet();
+        uint64_t now = engine::GetSystemTime();
+        
+        for (const auto& p : projectiles) {
+            if (!p.active) continue;
+            
+            int screenX = static_cast<int>(p.x) - viewWindow.x;
+            int screenY = static_cast<int>(p.y) - viewWindow.y;
+            
+            if (screenX < -30 || screenX > viewWindow.w + 30 ||
+                screenY < -30 || screenY > viewWindow.h + 30) continue;
+            
+            SpriteFrame frame = (p.type == Projectile::Type::Crabmeat) 
+                ? EnemyFrames::CRABMEAT_PROJECTILE 
+                : EnemyFrames::BUZZBOMBER_PROJECTILE;
+            
+            if (sheet) {
+                engine::Rect srcRect = {frame.x, frame.y, frame.w, frame.h};
+                engine::Rect destRect = {screenX, screenY, frame.w, frame.h};
+                gfx.DrawTextureScaled(sheet->GetTexture(), srcRect, destRect);
+            } else {
+//enhanced fallback with pulsing
+                uint32_t color = (p.type == Projectile::Type::Crabmeat) 
+                    ? engine::MakeColor(255, 60, 0)
+                    : engine::MakeColor(255, 255, 100);
+                
+//pulsing size for visibility
+                int pulse = (now / 100) % 6;
+                int size = p.width + (pulse > 3 ? (6 - pulse) : pulse) - 2;
+                int offset = (p.width - size) / 2;
+                
+                gfx.DrawRect({screenX + offset, screenY + offset, size, size}, color, true);
+            }
+        }
+    }
+    
+    bool CheckPlayerCollision(const engine::Rect& playerBox) {
+        for (auto& p : projectiles) {
+            if (!p.active) continue;
+            engine::Rect pBox = p.GetBounds();
+            if (!(playerBox.x + playerBox.w < pBox.x ||
+                  pBox.x + pBox.w < playerBox.x ||
+                  playerBox.y + playerBox.h < pBox.y ||
+                  pBox.y + pBox.h < playerBox.y)) {
+                p.active = false;
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    void Clear() { projectiles.clear(); }
+};
+
+//============================================================================
+//BASE ENEMY CLASS
+//============================================================================
+
 class Enemy {
 public:
-    enum class State {
-        Active,
-        Dying,      // Death animation
-        Dead        // Ready for removal
-    };
-    
-    enum class Type {
-        Motobug,
-        Crabmeat,
-        BuzzBomber,
-        Masher,
-        // New enemy types from sprite sheet
-        NewtronBlue,
-        NewtronGreen,
-        Bomb,
-        Caterkiller,
-        Batbrain,
-        Burrobot,
-        Roller,
-        Jaws,
-        BallHog,
-        Orbinaut
-    };
+    enum class State { Active, Dying, Dead };
+    enum class Type { Motobug, Crabmeat, BuzzBomber, Masher };
 
 protected:
-    float posX = 0;
-    float posY = 0;
-    float velX = 0;
-    float velY = 0;
-    
-    int width = 32;
-    int height = 32;
-    
+    float posX, posY;
+    float velX = 0, velY = 0;
+    int width, height;
     Type type;
     State state = State::Active;
-    bool facingRight = false;
+    bool facingRight = false;  //false = facing left (sprite default)
     
-    int currentFrame = 0;
     uint64_t lastFrameTime = 0;
     uint64_t deathTime = 0;
-    
     int scoreValue = 100;
     
     engine::GridLayer* gridLayer = nullptr;
+    std::function<void(float, float)> onDeath;
     
-    // Death animation callback
-    std::function<void(float, float)> onDeath;  // Spawn animal at position
-
 public:
     Enemy(Type t, float x, float y, int w, int h)
         : posX(x), posY(y), width(w), height(h), type(t) {
         lastFrameTime = engine::GetSystemTime();
     }
-    
     virtual ~Enemy() = default;
     
     void SetGridLayer(engine::GridLayer* grid) { gridLayer = grid; }
-    void SetOnDeath(std::function<void(float, float)> callback) { onDeath = callback; }
+    void SetOnDeath(std::function<void(float, float)> cb) { onDeath = cb; }
     
     virtual void Update() = 0;
     virtual void Render(const engine::Rect& viewWindow) = 0;
-    
-    // Check if player can damage this enemy (player in ball state)
-    virtual bool CanBeDamagedBy(const engine::Rect& playerBox, bool playerInBallState) {
-        if (state != State::Active) return false;
-        if (!playerInBallState) return false;
-        return CollidesWith(playerBox);
-    }
-    
-    // Check if this enemy damages the player
-    virtual bool DamagesPlayer(const engine::Rect& playerBox, bool playerInBallState) {
-        if (state != State::Active) return false;
-        if (playerInBallState) return false;  // Ball state kills enemy, not player
-        return CollidesWith(playerBox);
-    }
+    virtual void SetPlayerPosition(float, float) {}
     
     void Kill() {
         if (state == State::Active) {
             state = State::Dying;
             deathTime = engine::GetSystemTime();
-            velY = -5.0f;  // Pop up
-            if (onDeath) {
-                onDeath(posX + width/2, posY);
-            }
+            velY = -5.0f;
+            if (onDeath) onDeath(posX + width/2, posY);
         }
     }
     
@@ -104,1862 +375,1271 @@ public:
     bool IsActive() const { return state == State::Active; }
     int GetScore() const { return scoreValue; }
     Type GetType() const { return type; }
-    
     float GetX() const { return posX; }
     float GetY() const { return posY; }
     
     engine::Rect GetBoundingBox() const {
-        return {
-            static_cast<int>(posX),
-            static_cast<int>(posY),
-            width,
-            height
-        };
+        return {static_cast<int>(posX), static_cast<int>(posY), width, height};
     }
     
     bool CollidesWith(const engine::Rect& other) const {
         engine::Rect box = GetBoundingBox();
-        return !(other.x + other.w < box.x ||
-                 box.x + box.w < other.x ||
-                 other.y + other.h < box.y ||
-                 box.y + box.h < other.y);
+        return !(other.x + other.w < box.x || box.x + box.w < other.x ||
+                 other.y + other.h < box.y || box.y + box.h < other.y);
     }
     
+    bool CanBeDamagedBy(const engine::Rect& playerBox, bool playerInBallState) {
+        if (state != State::Active || !playerInBallState) return false;
+        return CollidesWith(playerBox);
+    }
+    
+    bool DamagesPlayer(const engine::Rect& playerBox, bool playerInBallState) {
+        if (state != State::Active || playerInBallState) return false;
+        return CollidesWith(playerBox);
+    }
+
 protected:
-    void UpdateDeathAnimation() {
-        if (state == State::Dying) {
-            velY += 0.3f;
-            posY += velY;
-            
-            // Remove after falling off screen or timeout
-            uint64_t elapsed = engine::GetSystemTime() - deathTime;
-            if (elapsed > 2000 || posY > 2000) {
-                state = State::Dead;
+    void RenderFrame(const engine::Rect& viewWindow, const SpriteFrame& frame, bool flip) {
+        auto& gfx = engine::GetGraphics();
+        auto sheet = ResourceManager::Instance().GetEnemiesSheet();
+        
+        int screenX = static_cast<int>(posX) - viewWindow.x;
+        int screenY = static_cast<int>(posY) - viewWindow.y;
+        
+        if (screenX < -100 || screenX > viewWindow.w + 100 ||
+            screenY < -100 || screenY > viewWindow.h + 100) return;
+        
+        if (sheet) {
+            if (flip) {
+                sf::Sprite sprite(sheet->GetTexture());
+                sprite.setTextureRect(sf::IntRect(frame.x, frame.y, frame.w, frame.h));
+                sprite.setScale(-1.f, 1.f);
+                sprite.setPosition(static_cast<float>(screenX + frame.w), static_cast<float>(screenY));
+                gfx.DrawSprite(sprite);
+            } else {
+                engine::Rect srcRect = {frame.x, frame.y, frame.w, frame.h};
+                engine::Rect destRect = {screenX, screenY, frame.w, frame.h};
+                gfx.DrawTextureScaled(sheet->GetTexture(), srcRect, destRect);
             }
+        } else {
+            gfx.DrawRect({screenX, screenY, frame.w, frame.h}, engine::MakeColor(255, 0, 255), true);
         }
     }
     
-    bool IsOnGround() {
-        if (!gridLayer) return true;
+    void RenderFrameAt(const engine::Rect& viewWindow, const SpriteFrame& frame, 
+                       int atX, int atY, bool /*flip*/) {
+        auto& gfx = engine::GetGraphics();
+        auto sheet = ResourceManager::Instance().GetEnemiesSheet();
         
-        engine::Rect box = GetBoundingBox();
-        int dy = 1;
-        int dx = 0;
-        gridLayer->FilterGridMotion(box, &dx, &dy);
-        return dy == 0;
+        int screenX = atX - viewWindow.x;
+        int screenY = atY - viewWindow.y;
+        
+        if (sheet) {
+            engine::Rect srcRect = {frame.x, frame.y, frame.w, frame.h};
+            engine::Rect destRect = {screenX, screenY, frame.w, frame.h};
+            gfx.DrawTextureScaled(sheet->GetTexture(), srcRect, destRect);
+        }
     }
     
-    bool WouldFallOff(float direction) {
+    void UpdateDeathAnimation() {
+        velY += 0.3f;
+        posY += velY;
+        if (engine::GetSystemTime() - deathTime > 2000 || posY > 2000) {
+            state = State::Dead;
+        }
+    }
+    
+    bool WouldHitWall(int direction) {
         if (!gridLayer) return false;
-        
-        // Check a bit ahead and below
-        int checkX = static_cast<int>(posX + (direction > 0 ? width + 4 : -4));
-        int checkY = static_cast<int>(posY + height + 4);
-        
-        engine::Rect checkBox = {checkX, checkY, 4, 4};
-        int dy = 1;
-        int dx = 0;
+//check for wall at MID-BODY height - above any ground variations
+//only detect actual walls, not small bumps or terrain variations
+        engine::Rect box = GetBoundingBox();
+        engine::Rect checkBox;
+        checkBox.x = box.x + (direction > 0 ? box.w : -8);  //check ahead
+        checkBox.y = box.y + (box.h / 3);  //check at 1/3 height from top (well above feet)
+        checkBox.w = 8;
+        checkBox.h = box.h / 3;  //check a decent vertical slice
+        int dx = direction * 12, dy = 0;  //try to move 12 pixels
         gridLayer->FilterGridMotion(checkBox, &dx, &dy);
-        return dy != 0;  // Would fall
+//only consider it a wall if we can't move at all (truly blocked)
+        return (std::abs(dx) < 2);  //wall if almost no movement possible
     }
     
-    bool WouldHitWall(float direction) {
+    bool WouldFallOff(int direction) {
         if (!gridLayer) return false;
-        
-        int dx = static_cast<int>(direction);
-        int dy = 0;
+//check if there's ground ahead at foot level
+//IMPORTANT: Allow stepping down small heights (like 8x8 blocks)
+//only return true for actual cliffs
         engine::Rect box = GetBoundingBox();
-        gridLayer->FilterGridMotion(box, &dx, &dy);
-        return dx == 0;
-    }
-};
-
-// Motobug - ground patrol enemy
-class Motobug : public Enemy {
-private:
-    float speed = 1.5f;
-    uint64_t pauseTime = 0;
-    bool isPaused = false;
-    static constexpr uint64_t PAUSE_DURATION = 500;
-    static constexpr int FRAME_COUNT = 2;
-    static constexpr uint64_t FRAME_DELAY = 150;
-
-public:
-    Motobug(float x, float y) 
-        : Enemy(Type::Motobug, x, y, 40, 32) {
-        facingRight = false;
-        velX = -speed;
-        scoreValue = 100;
+        engine::Rect checkBox;
+//position ahead of enemy at foot level
+        checkBox.x = box.x + (direction > 0 ? box.w + 4 : -12);
+        checkBox.y = box.y + box.h;  //at feet level
+        checkBox.w = 8;
+        checkBox.h = 2;
+        
+//first check: is there ground within step-down distance (16 pixels)?
+        int dx = 0, dy = 16;  //check up to 16 pixels down (2 grid cells)
+        gridLayer->FilterGridMotion(checkBox, &dx, &dy);
+        
+//if ground within 16 pixels, it's just a small step - NOT a cliff
+        if (dy < 16) {
+            return false;  //can walk down small steps
+        }
+        
+//check further down for actual cliffs
+        dy = 48;  //check 48 pixels down
+        gridLayer->FilterGridMotion(checkBox, &dx, &dy);
+        
+//if no ground within 48 pixels, it's a real cliff
+        return (dy >= 48);
     }
     
-    void Update() override {
-        if (state == State::Dying) {
-            UpdateDeathAnimation();
+    void ApplyGravity(float amount = 0.3f) {
+        velY += amount;
+        if (velY > 12.0f) velY = 12.0f;
+    }
+    
+    void ApplyMovement() {
+        if (!gridLayer) {
+            posX += velX;
+            posY += velY;
             return;
         }
         
-        if (state != State::Active) return;
+//boundary check - turn around at map edges instead of falling into void
+//map boundaries: 0 to MAP_WIDTH (4992 pixels)
+        constexpr float MAP_LEFT = 16.0f;  //small margin from left edge
+        constexpr float MAP_RIGHT = 4992.0f - 16.0f;  //small margin from right edge
+        constexpr float MAX_FALL_Y = 1280.0f + 100.0f;  //below map = death
+        
+//check if about to go off map horizontally
+        float nextX = posX + velX;
+        if (nextX < MAP_LEFT || nextX + width > MAP_RIGHT) {
+            velX = -velX;  //turn around
+            facingRight = !facingRight;
+            nextX = posX;  //don't move past edge
+        }
+        posX = nextX;
+        
+//handle vertical movement with grid collision (for gravity/landing)
+        if (velY != 0) {
+            engine::Rect box = GetBoundingBox();
+            int dx = 0;
+            int dy = static_cast<int>(velY);
+            gridLayer->FilterGridMotion(box, &dx, &dy);
+            posY += dy;
+            if (dy == 0 && velY > 0) velY = 0;  //hit ground
+        }
+        
+//ground snap: if enemy is on ground (velY==0), check if ground moved down (slope)
+//this makes enemies follow terrain properly when walking down slopes
+        if (velY == 0) {
+            engine::Rect box = GetBoundingBox();
+//probe downward to find ground
+            int probeX = 0;
+            int probeY = 8;  //check up to 8 pixels down for slope
+            gridLayer->FilterGridMotion(box, &probeX, &probeY);
+            if (probeY > 0 && probeY <= 8) {
+//there's ground within 8 pixels below - snap to it
+                posY += probeY;
+            } else if (probeY > 8) {
+//no ground within 8 pixels - check further for ledge vs pit
+                int farProbe = 64;  //check 64 pixels down
+                gridLayer->FilterGridMotion(box, &probeX, &farProbe);
+                if (farProbe >= 64) {
+//no ground for 64 pixels - this is a cliff/pit, turn around
+                    velX = -velX;
+                    facingRight = !facingRight;
+                } else {
+//ground found below - start falling
+                    velY = 0.1f;
+                }
+            }
+        }
+        
+//kill enemy if fallen too far
+        if (posY > MAX_FALL_Y) {
+            state = State::Dead;
+        }
+    }
+};
+
+//============================================================================
+//MOTOBUG
+//============================================================================
+
+class Motobug : public Enemy {
+private:
+    float speed = 1.5f;
+    bool paused = false;
+    uint64_t pauseStart = 0;
+    int bodyFrame = 0;
+    int exhaustFrame = 0;
+    uint64_t lastBodyTime = 0;
+    uint64_t lastExhaustTime = 0;
+    
+public:
+    Motobug(float x, float y) : Enemy(Type::Motobug, x, y, 40, 33) {
+        velX = -speed;
+        facingRight = false;
+        lastBodyTime = lastExhaustTime = engine::GetSystemTime();
+    }
+    
+    void Update() override {
+        if (state == State::Dying) { UpdateDeathAnimation(); return; }
+        if (state == State::Dead) return;
         
         uint64_t now = engine::GetSystemTime();
         
-        // Animate
-        if (now - lastFrameTime >= FRAME_DELAY) {
-            currentFrame = (currentFrame + 1) % FRAME_COUNT;
-            lastFrameTime = now;
-        }
-        
-        // Pause logic
-        if (isPaused) {
-            if (now - pauseTime >= PAUSE_DURATION) {
-                isPaused = false;
-                // Turn around
+        if (paused) {
+            if (now - pauseStart >= 500) {
+                paused = false;
                 facingRight = !facingRight;
                 velX = facingRight ? speed : -speed;
             }
             return;
         }
         
-        // Movement
-        posX += velX;
-        
-        // Check for obstacles or cliffs
-        if (WouldHitWall(velX) || WouldFallOff(velX)) {
-            isPaused = true;
-            pauseTime = now;
+        int dir = facingRight ? 1 : -1;
+//only check for walls, not ledges (WouldFallOff was too sensitive)
+        if (WouldHitWall(dir)) {
             velX = 0;
+            paused = true;
+            pauseStart = now;
+            return;
         }
         
-        // Apply gravity
-        if (!IsOnGround()) {
-            velY += 0.3f;
-            posY += velY;
-        } else {
-            velY = 0;
+        ApplyGravity();
+        ApplyMovement();
+        
+//animate body (wheel rotation)
+        if (now - lastBodyTime >= 80) {
+            bodyFrame = (bodyFrame + 1) % EnemyFrames::MOTOBUG_BODY_COUNT;
+            lastBodyTime = now;
+        }
+        
+//animate exhaust
+        if (now - lastExhaustTime >= 100) {
+            exhaustFrame = (exhaustFrame + 1) % EnemyFrames::MOTOBUG_EXHAUST_COUNT;
+            lastExhaustTime = now;
         }
     }
     
     void Render(const engine::Rect& viewWindow) override {
-        auto& gfx = engine::GetGraphics();
+        if (state == State::Dead) return;
         
-        int screenX = static_cast<int>(posX) - viewWindow.x;
-        int screenY = static_cast<int>(posY) - viewWindow.y;
+        bool flip = facingRight;
         
-        // Skip if off screen
-        if (screenX + width < 0 || screenX > viewWindow.w ||
-            screenY + height < 0 || screenY > viewWindow.h) {
-            return;
-        }
-        
-        engine::Color bodyColor;
-        if (state == State::Dying) {
-            bodyColor = engine::MakeColor(255, 100, 100);  // Flash red
+        SpriteFrame exhaustFr = EnemyFrames::MOTOBUG_EXHAUST[exhaustFrame];
+        int exhaustX, exhaustY;
+        if (facingRight) {
+            exhaustX = static_cast<int>(posX) - exhaustFr.w - 2;
         } else {
-            bodyColor = engine::MakeColor(200, 50, 50);  // Red body
+            exhaustX = static_cast<int>(posX) + width + 2;
         }
+        exhaustY = static_cast<int>(posY) + height - exhaustFr.h - 10;
+        RenderFrameAt(viewWindow, exhaustFr, exhaustX, exhaustY, false);
         
-        // Draw Motobug body
-        gfx.DrawRect({screenX + 5, screenY, width - 10, height - 8}, bodyColor, true);
-        
-        // Wheel
-        int wheelOffset = (currentFrame == 0) ? 0 : 2;
-        gfx.DrawRect({screenX + 8, screenY + height - 12 + wheelOffset, 10, 10}, 
-                     engine::MakeColor(50, 50, 50), true);
-        gfx.DrawRect({screenX + width - 18, screenY + height - 12 - wheelOffset, 10, 10}, 
-                     engine::MakeColor(50, 50, 50), true);
-        
-        // Eye
-        int eyeX = facingRight ? screenX + width - 12 : screenX + 6;
-        gfx.DrawRect({eyeX, screenY + 6, 6, 6}, engine::MakeColor(255, 255, 255), true);
-        
-        // Antenna
-        gfx.DrawRect({screenX + width/2 - 1, screenY - 6, 2, 8}, 
-                     engine::MakeColor(100, 100, 100), true);
-        
-        // Border
-        gfx.DrawRect({screenX, screenY, width, height}, engine::MakeColor(0, 0, 0), false);
+        SpriteFrame bodyFr = EnemyFrames::GetMotobugBody(bodyFrame);
+        RenderFrame(viewWindow, bodyFr, flip);
     }
 };
 
-// Crabmeat - shoots projectiles
+//============================================================================
+//CRABMEAT - Smooth transitions
+//============================================================================
+
 class Crabmeat : public Enemy {
 private:
+    enum class CrabState { Walking, PreAttack, Attacking, PostAttack, Cooldown };
+    CrabState crabState = CrabState::Walking;
+    
     float speed = 0.8f;
-    uint64_t lastShootTime = 0;
-    static constexpr uint64_t SHOOT_COOLDOWN = 3000;
-    bool canSeePlayer = false;
-    float playerX = 0;
+    float playerX = 0, playerY = 0;
+    
+    uint64_t stateStart = 0;
+    int walkFrame = 0;
+    int attackFrame = 0;
+    bool walkForward = true;
+    bool hasShot = false;
+    uint64_t lastWalkTime = 0;
+    
+//check if there's a cliff/void ahead (5 tiles down with no ground)
+    bool IsCliffAhead(int direction) {
+        if (!gridLayer) return false;
+        
+        engine::Rect box = GetBoundingBox();
+//check position ahead of crab at foot level
+        int checkX = (direction > 0) ? (box.x + box.w + 4) : (box.x - 12);
+        int checkY = box.y + box.h;  //at feet
+        
+//convert to grid coordinates
+        int gridCol = checkX / engine::GRID_ELEMENT_WIDTH;
+        int gridRow = checkY / engine::GRID_ELEMENT_HEIGHT;
+        
+//check 5 tiles downward - if all are empty (0 or -1), it's a cliff
+        int emptyCount = 0;
+        for (int i = 0; i < 5; i++) {
+            int tileType = gridLayer->GetTile(gridCol, gridRow + i);
+            if (tileType <= 0) {  //empty or invalid
+                emptyCount++;
+            }
+        }
+        
+//if all 5 tiles are empty, it's a cliff
+        return (emptyCount >= 5);
+    }
+    
+//check if there's a wall ahead (tiles that are solid)
+    bool IsWallAhead(int direction) {
+        if (!gridLayer) return false;
+        
+        engine::Rect box = GetBoundingBox();
+//check position ahead of crab at body level
+        int checkX = (direction > 0) ? (box.x + box.w + 4) : (box.x - 12);
+        int checkY = box.y + box.h / 2;  //mid body
+        
+//convert to grid coordinates
+        int gridCol = checkX / engine::GRID_ELEMENT_WIDTH;
+        int gridRow = checkY / engine::GRID_ELEMENT_HEIGHT;
+        
+//check 3 tiles upward - if solid, it's a wall
+        int solidCount = 0;
+        for (int i = 0; i < 3; i++) {
+            int tileType = gridLayer->GetTile(gridCol, gridRow - i);
+            if (tileType > 0) {  //solid
+                solidCount++;
+            }
+        }
+        
+//if 2+ tiles are solid, it's a wall
+        return (solidCount >= 2);
+    }
     
 public:
-    Crabmeat(float x, float y) 
-        : Enemy(Type::Crabmeat, x, y, 48, 32) {
-        facingRight = false;
+    Crabmeat(float x, float y) : Enemy(Type::Crabmeat, x, y, 48, 32) {
         velX = -speed;
-        scoreValue = 100;
-    }
-    
-    void SetPlayerPosition(float px) { 
-        playerX = px; 
-        canSeePlayer = std::abs(px - posX) < 200;
-    }
-    
-    void Update() override {
-        if (state == State::Dying) {
-            UpdateDeathAnimation();
-            return;
-        }
-        
-        if (state != State::Active) return;
-        
-        uint64_t now = engine::GetSystemTime();
-        
-        // Animate
-        if (now - lastFrameTime >= 200) {
-            currentFrame = (currentFrame + 1) % 2;
-            lastFrameTime = now;
-        }
-        
-        // Movement
-        posX += velX;
-        
-        // Check for obstacles or cliffs
-        if (WouldHitWall(velX) || WouldFallOff(velX)) {
-            facingRight = !facingRight;
-            velX = facingRight ? speed : -speed;
-        }
-        
-        // Shooting logic (simplified - would need projectile system)
-        if (canSeePlayer && now - lastShootTime >= SHOOT_COOLDOWN) {
-            lastShootTime = now;
-            // Would spawn projectiles here
-        }
-    }
-    
-    void Render(const engine::Rect& viewWindow) override {
-        auto& gfx = engine::GetGraphics();
-        
-        int screenX = static_cast<int>(posX) - viewWindow.x;
-        int screenY = static_cast<int>(posY) - viewWindow.y;
-        
-        if (screenX + width < 0 || screenX > viewWindow.w ||
-            screenY + height < 0 || screenY > viewWindow.h) {
-            return;
-        }
-        
-        engine::Color bodyColor = state == State::Dying ? 
-            engine::MakeColor(255, 150, 150) : engine::MakeColor(255, 100, 50);
-        
-        // Body
-        gfx.DrawRect({screenX + 8, screenY + 8, width - 16, height - 8}, bodyColor, true);
-        
-        // Claws
-        int clawOffset = (currentFrame == 0) ? 0 : 4;
-        gfx.DrawRect({screenX, screenY + 10 - clawOffset, 12, 16}, bodyColor, true);
-        gfx.DrawRect({screenX + width - 12, screenY + 10 + clawOffset, 12, 16}, bodyColor, true);
-        
-        // Eyes
-        gfx.DrawRect({screenX + 14, screenY + 4, 6, 6}, engine::MakeColor(255, 255, 255), true);
-        gfx.DrawRect({screenX + width - 20, screenY + 4, 6, 6}, engine::MakeColor(255, 255, 255), true);
-        
-        // Border
-        gfx.DrawRect({screenX, screenY, width, height}, engine::MakeColor(0, 0, 0), false);
-    }
-};
-
-// BuzzBomber - Flying bee enemy that patrols and fires projectiles
-class BuzzBomber : public Enemy {
-private:
-    float speed = 2.0f;
-    float homeY = 0;  // Base Y position to hover around
-    float hoverOffset = 0;
-    float hoverSpeed = 0.05f;
-    
-    float playerX = 0;
-    float playerY = 0;
-    bool canSeePlayer = false;
-    
-    uint64_t lastShootTime = 0;
-    static constexpr uint64_t SHOOT_COOLDOWN = 2500;
-    static constexpr int FRAME_COUNT = 2;
-    static constexpr uint64_t FRAME_DELAY = 80;  // Fast wing flapping
-    
-    // Patrol bounds
-    float patrolLeft = 0;
-    float patrolRight = 0;
-    
-public:
-    BuzzBomber(float x, float y, float patrolRange = 200.0f) 
-        : Enemy(Type::BuzzBomber, x, y, 46, 32) {
-        homeY = y;
         facingRight = false;
-        velX = -speed;
-        scoreValue = 100;
-        
-        patrolLeft = x - patrolRange / 2;
-        patrolRight = x + patrolRange / 2;
+        lastWalkTime = engine::GetSystemTime();
     }
     
-    void SetPlayerPosition(float px, float py) { 
+    void SetPlayerPosition(float px, float py) override {
         playerX = px;
         playerY = py;
-        float dist = std::sqrt((px - posX) * (px - posX) + (py - posY) * (py - posY));
-        canSeePlayer = dist < 250;
     }
     
-    void Update() override {
-        if (state == State::Dying) {
-            UpdateDeathAnimation();
-            return;
+    void DoWalkMovement() {
+        int dir = facingRight ? 1 : -1;
+        
+//check for cliff or wall ahead
+        if (IsCliffAhead(dir) || IsWallAhead(dir)) {
+//turn around
+            facingRight = !facingRight;
+            velX = facingRight ? speed : -speed;
+        } else {
+//move forward
+            velX = facingRight ? speed : -speed;
+            posX += velX;
         }
         
-        if (state != State::Active) return;
-        
-        uint64_t now = engine::GetSystemTime();
-        
-        // Wing animation (fast)
-        if (now - lastFrameTime >= FRAME_DELAY) {
-            currentFrame = (currentFrame + 1) % FRAME_COUNT;
-            lastFrameTime = now;
-        }
-        
-        // Hover movement
-        hoverOffset += hoverSpeed;
-        posY = homeY + std::sin(hoverOffset) * 10.0f;
-        
-        // Horizontal patrol
-        posX += velX;
-        
-        // Turn around at patrol bounds
-        if (posX <= patrolLeft) {
-            posX = patrolLeft;
+//map boundary check
+        if (posX < 50.0f) {
+            posX = 50.0f;
             facingRight = true;
             velX = speed;
-        } else if (posX >= patrolRight) {
-            posX = patrolRight;
+        } else if (posX > 9900.0f) {
+            posX = 9900.0f;
             facingRight = false;
             velX = -speed;
         }
         
-        // Stop and shoot if player is below
-        if (canSeePlayer && playerY > posY && std::abs(playerX - posX) < 80) {
-            velX = 0;  // Hover in place
+//ground following - use FindGroundBelow to stick to terrain
+        if (gridLayer) {
+            engine::Rect box = GetBoundingBox();
+            int footX = box.x + box.w / 2;  //center of crab
+            int footY = box.y + box.h;  //bottom of crab
             
-            if (now - lastShootTime >= SHOOT_COOLDOWN) {
-                lastShootTime = now;
-                // Fire projectile downward (would spawn projectile here)
+//find ground below current position (search up to 24 pixels down)
+            int groundY = gridLayer->FindGroundBelow(footX, footY - 4, 24);
+            
+            if (groundY > 0) {
+//ground found - snap to it
+                float targetY = static_cast<float>(groundY - box.h);
+                float diff = targetY - posY;
+                
+                if (diff > 0 && diff <= 16) {
+//ground is below us (walking down slope) - snap down
+                    posY = targetY;
+                    velY = 0;
+                } else if (diff < 0 && diff >= -8) {
+//ground is above us (walking up slope) - snap up
+                    posY = targetY;
+                    velY = 0;
+                } else if (diff > 16) {
+//too far down - apply gravity
+                    ApplyGravity();
+                    engine::Rect gBox = GetBoundingBox();
+                    int dx = 0;
+                    int dy = static_cast<int>(velY);
+                    gridLayer->FilterGridMotion(gBox, &dx, &dy);
+                    posY += dy;
+                    if (dy == 0 && velY > 0) velY = 0;
+                }
+            } else {
+//no ground found - apply gravity
+                ApplyGravity();
+                engine::Rect gBox = GetBoundingBox();
+                int dx = 0;
+                int dy = static_cast<int>(velY);
+                gridLayer->FilterGridMotion(gBox, &dx, &dy);
+                posY += dy;
+                if (dy == 0 && velY > 0) velY = 0;
             }
-        } else {
-            // Resume patrol
-            velX = facingRight ? speed : -speed;
+        }
+    }
+    
+    void DoWalkAnimation(uint64_t now) {
+        if (now - lastWalkTime >= 150) {
+            if (walkForward) {
+                walkFrame++;
+                if (walkFrame >= 2) walkForward = false;
+            } else {
+                walkFrame--;
+                if (walkFrame <= 0) walkForward = true;
+            }
+            lastWalkTime = now;
+        }
+    }
+    
+    void Update() override {
+        if (state == State::Dying) { UpdateDeathAnimation(); return; }
+        if (state == State::Dead) return;
+        
+        uint64_t now = engine::GetSystemTime();
+        
+        switch (crabState) {
+            case CrabState::Walking: {
+//check if player is close for attack
+                float dx = playerX - posX;
+                float dy = playerY - posY;
+                float dist = std::sqrt(dx*dx + dy*dy);
+                
+                if (dist < 150.0f && std::abs(dy) < 50) {
+                    crabState = CrabState::PreAttack;
+                    stateStart = now;
+                    velX = 0;
+                    facingRight = (dx > 0);
+                    attackFrame = 0;
+                    return;
+                }
+                
+                DoWalkMovement();
+                DoWalkAnimation(now);
+                break;
+            }
+            case CrabState::PreAttack:
+                attackFrame = 0;
+                if (now - stateStart >= 250) {
+                    crabState = CrabState::Attacking;
+                    stateStart = now;
+                    hasShot = false;
+                }
+                break;
+            case CrabState::Attacking:
+                attackFrame = 1;
+                if (!hasShot && now - stateStart > 200) {
+                    ProjectileManager::Instance().SpawnCrabmeatBullets(posX, posY, width, facingRight);
+                    hasShot = true;
+                }
+                if (now - stateStart >= 500) {
+                    crabState = CrabState::PostAttack;
+                    stateStart = now;
+                }
+                break;
+            case CrabState::PostAttack:
+                attackFrame = 0;
+                if (now - stateStart >= 250) {
+                    crabState = CrabState::Cooldown;
+                    stateStart = now;
+                }
+                break;
+            case CrabState::Cooldown:
+                DoWalkMovement();
+                DoWalkAnimation(now);
+                
+                if (now - stateStart >= 2000) {
+                    crabState = CrabState::Walking;
+                }
+                break;
         }
     }
     
     void Render(const engine::Rect& viewWindow) override {
-        auto& gfx = engine::GetGraphics();
+        if (state == State::Dead) return;
         
-        int screenX = static_cast<int>(posX) - viewWindow.x;
-        int screenY = static_cast<int>(posY) - viewWindow.y;
+        bool flip = facingRight;
         
-        if (screenX + width < 0 || screenX > viewWindow.w ||
-            screenY + height < 0 || screenY > viewWindow.h) {
-            return;
+        if (crabState == CrabState::PreAttack || 
+            crabState == CrabState::Attacking || 
+            crabState == CrabState::PostAttack) {
+            SpriteFrame frame = EnemyFrames::GetCrabmeatAttack(attackFrame);
+            float oldY = posY;
+            posY -= 8;
+            RenderFrame(viewWindow, frame, flip);
+            posY = oldY;
+        } else {
+            SpriteFrame frame = EnemyFrames::GetCrabmeatWalk(walkFrame);
+            RenderFrame(viewWindow, frame, flip);
         }
-        
-        engine::Color bodyColor = state == State::Dying ? 
-            engine::MakeColor(255, 200, 100) : engine::MakeColor(255, 200, 0);  // Yellow
-        engine::Color stripeColor = engine::MakeColor(40, 40, 40);  // Black stripes
-        
-        // Body (oval shape approximated)
-        gfx.DrawRect({screenX + 8, screenY + 10, width - 16, height - 14}, bodyColor, true);
-        
-        // Stripes
-        gfx.DrawRect({screenX + 14, screenY + 12, width - 28, 4}, stripeColor, true);
-        gfx.DrawRect({screenX + 14, screenY + 20, width - 28, 4}, stripeColor, true);
-        
-        // Head
-        int headX = facingRight ? screenX + width - 16 : screenX;
-        gfx.DrawRect({headX, screenY + 8, 16, 16}, bodyColor, true);
-        
-        // Eyes
-        int eyeX = facingRight ? headX + 8 : headX + 2;
-        gfx.DrawRect({eyeX, screenY + 10, 6, 6}, engine::MakeColor(255, 0, 0), true);  // Red eyes
-        
-        // Wings (animate up/down)
-        int wingY = (currentFrame == 0) ? screenY : screenY + 4;
-        gfx.DrawRect({screenX + 12, wingY - 6, 22, 8}, 
-                     engine::MakeColor(200, 200, 255, 180), true);  // Translucent wings
-        
-        // Stinger
-        int stingerX = facingRight ? screenX - 4 : screenX + width;
-        gfx.DrawRect({stingerX, screenY + height/2, 6, 3}, stripeColor, true);
-        
-        // Border
-        gfx.DrawRect({screenX, screenY, width, height}, engine::MakeColor(0, 0, 0), false);
     }
 };
 
-// Masher - Jumping piranha enemy (jumps from water/ground)
+//============================================================================
+//BUZZ BOMBER - SMOOTH animation with only 2 frames
+//============================================================================
+
+class BuzzBomber : public Enemy {
+private:
+    enum class BuzzState { Patrol, Approach, Hover, Shoot, Retreat };
+    BuzzState buzzState = BuzzState::Patrol;
+    
+    float homeX, homeY;
+    float playerX = 0, playerY = 0;
+    float speed = 2.0f;
+    float patrolLeft, patrolRight;
+    
+//screen bounds for off-screen detection
+    float screenLeft = 0, screenRight = 0, screenTop = 0, screenBottom = 0;
+    
+//trigger/reset distance - about 1 tile (256 pixels) from home
+    static constexpr float RESET_DISTANCE = 300.0f;
+    
+    uint64_t stateStart = 0;
+    uint64_t lastFrameTime = 0;
+    int animFrame = 0;
+    bool hasShot = false;
+    bool showStingFrame = false;
+    uint64_t stingStartTime = 0;
+    bool shootingFacingRight = false;  //store direction when shooting
+    
+public:
+    BuzzBomber(float x, float y) : Enemy(Type::BuzzBomber, x, y, 48, 32) {
+        homeX = x;
+        homeY = y;
+        patrolLeft = x - 100;
+        patrolRight = x + 100;
+        velX = -speed;
+        facingRight = false;
+        lastFrameTime = engine::GetSystemTime();
+    }
+    
+    void SetPlayerPosition(float px, float py) override {
+        playerX = px;
+        playerY = py;
+    }
+    
+//called to set current screen bounds for off-screen detection
+    void SetScreenBounds(float left, float top, float right, float bottom) {
+        screenLeft = left;
+        screenTop = top;
+        screenRight = right;
+        screenBottom = bottom;
+    }
+    
+    bool IsOffScreen() const {
+//check if completely off screen (with margin)
+        const float margin = 50.0f;
+        return posX + width < screenLeft - margin || 
+               posX > screenRight + margin ||
+               posY + height < screenTop - margin ||
+               posY > screenBottom + margin;
+    }
+    
+//check if Sonic is far from BuzzBomber's home (1 tile away = reset)
+    bool IsSonicFarFromHome() const {
+        float dx = playerX - homeX;
+        float dy = playerY - homeY;
+        return std::sqrt(dx*dx + dy*dy) > RESET_DISTANCE;
+    }
+    
+    void ResetToHome() {
+        buzzState = BuzzState::Patrol;
+        posX = homeX;
+        posY = homeY;
+        facingRight = false;
+        hasShot = false;
+    }
+    
+    void Update() override {
+        if (state == State::Dying) { UpdateDeathAnimation(); return; }
+        if (state == State::Dead) return;
+        
+        uint64_t now = engine::GetSystemTime();
+        
+//reset ONLY when Sonic has left the area - NOT when BuzzBomber goes off-screen
+//this prevents the teleporting appearance - BuzzBomber should fly off naturally
+        if (buzzState != BuzzState::Patrol) {
+            if (IsSonicFarFromHome()) {
+                ResetToHome();
+                return;
+            }
+        }
+        
+//wing animation - use all 4 frames for smoother animation
+        unsigned frameDelay = (buzzState == BuzzState::Approach) ? 50 : 100;
+        if (now - lastFrameTime >= frameDelay) {
+            animFrame = (animFrame + 1) % 4;  //use all 4 frames
+            lastFrameTime = now;
+        }
+        
+        switch (buzzState) {
+            case BuzzState::Patrol: {
+                float dx = playerX - posX;
+                float dy = playerY - posY;
+                float dist = std::sqrt(dx*dx + dy*dy);
+                
+//only approach if Sonic is nearby (within detection range)
+//don't check if on-screen - let BuzzBomber approach naturally
+                if (dist < 200.0f && dist > 40.0f) {
+                    buzzState = BuzzState::Approach;
+                    stateStart = now;
+                    facingRight = (dx > 0);
+                    return;
+                }
+                
+//patrol back and forth
+                if (posX <= patrolLeft) {
+                    facingRight = true;
+                } else if (posX >= patrolRight) {
+                    facingRight = false;
+                }
+                
+                posX += facingRight ? speed : -speed;
+                posY = homeY + std::sin(now / 300.0f) * 4.0f;
+                break;
+            }
+            case BuzzState::Approach: {
+                float dx = playerX - posX;
+                float dy = playerY - posY;
+                float dist = std::sqrt(dx*dx + dy*dy);
+                
+                if (dist > 1.0f) {
+//move toward player smoothly
+                    float moveX = (dx / dist) * speed * 1.8f;
+                    float targetY = playerY - 50;
+                    float moveY = (posY > targetY) ? -1.5f : ((posY < targetY) ? 0.8f : 0);
+                    
+                    posX += moveX;
+                    posY += moveY;
+                }
+                
+                facingRight = (dx > 0);
+                
+                if (dist < 90.0f || now - stateStart > 1500) {
+                    buzzState = BuzzState::Hover;
+                    stateStart = now;
+                }
+                break;
+            }
+            case BuzzState::Hover:
+                posY += std::sin(now / 100.0f) * 0.5f;
+                facingRight = (playerX > posX);
+                
+                if (now - stateStart >= 300) {
+//SHOOT INSTANTLY and switch to retreat immediately
+                    ProjectileManager::Instance().SpawnBuzzBomberBullet(
+                        posX, posY, playerX, playerY, facingRight);
+                    hasShot = true;
+                    showStingFrame = true;
+                    stingStartTime = now;
+                    shootingFacingRight = facingRight;  //remember direction when shooting
+                    buzzState = BuzzState::Retreat;
+                    stateStart = now;
+//retreat away from player
+                    facingRight = (posX > playerX);
+                }
+                break;
+            case BuzzState::Shoot:
+//this state is no longer used - shoot happens instantly in Hover
+                buzzState = BuzzState::Retreat;
+                break;
+            case BuzzState::Retreat:
+//move away smoothly - keep flying until off screen
+                posX += facingRight ? speed * 2.0f : -speed * 2.0f;
+                posY -= 1.0f;
+                
+//reset to home when going off screen OR when Sonic leaves area
+                if (IsOffScreen()) {
+                    ResetToHome();
+                }
+                break;
+        }
+    }
+    
+    void Render(const engine::Rect& viewWindow) override {
+        if (state == State::Dead) return;
+        
+        uint64_t now = engine::GetSystemTime();
+        
+//hold shooting frame for 225ms
+        if (showStingFrame && now - stingStartTime > 225) {
+            showStingFrame = false;
+        }
+        
+        SpriteFrame frame;
+        bool flipDirection;
+        
+        if (showStingFrame) {
+            frame = EnemyFrames::GetBuzzBomberShoot();
+            flipDirection = shootingFacingRight;  //use direction when shot was fired
+        } else {
+            frame = EnemyFrames::GetBuzzBomberFly(animFrame);
+            flipDirection = facingRight;  //use current direction for flying
+        }
+        
+        RenderFrame(viewWindow, frame, flipDirection);
+    }
+};
+
+//============================================================================
+//MASHER
+//============================================================================
+
 class Masher : public Enemy {
 private:
-    float jumpForce = -12.0f;
-    float gravity = 0.4f;
-    float homeY = 0;  // Starting position (water surface)
+    enum class MasherState { Waiting, Jumping, Falling };
+    MasherState masherState = MasherState::Waiting;
     
-    bool isJumping = false;
-    uint64_t lastJumpTime = 0;
-    uint64_t jumpCooldown = 2000;  // Time between jumps
-    
-    float playerX = 0;
-    bool playerNearby = false;
-    
-    static constexpr int FRAME_COUNT = 2;
-    static constexpr uint64_t FRAME_DELAY = 100;
+    float homeY;
+    float playerX = 0, playerY = 0;
+    uint64_t waitStart = 0;
+    int currentFrame = 0;
     
 public:
-    Masher(float x, float y, uint64_t cooldown = 2000) 
-        : Enemy(Type::Masher, x, y, 24, 40) {
+    Masher(float x, float y) : Enemy(Type::Masher, x, y, 32, 33) {
         homeY = y;
-        jumpCooldown = cooldown;
-        scoreValue = 100;
-        velY = 0;
+        waitStart = engine::GetSystemTime();
     }
     
-    void SetPlayerPosition(float px) { 
+    void SetPlayerPosition(float px, float py) override {
         playerX = px;
-        playerNearby = std::abs(px - posX) < 150;
+        playerY = py;
     }
     
     void Update() override {
-        if (state == State::Dying) {
-            UpdateDeathAnimation();
-            return;
-        }
-        
-        if (state != State::Active) return;
+        if (state == State::Dying) { UpdateDeathAnimation(); return; }
+        if (state == State::Dead) return;
         
         uint64_t now = engine::GetSystemTime();
         
-        // Animate
-        if (now - lastFrameTime >= FRAME_DELAY) {
-            currentFrame = (currentFrame + 1) % FRAME_COUNT;
-            lastFrameTime = now;
-        }
-        
-        if (isJumping) {
-            // Apply gravity
-            velY += gravity;
-            posY += velY;
-            
-            // Face toward player while jumping
-            facingRight = playerX > posX;
-            
-            // Back to home position
-            if (posY >= homeY) {
+        switch (masherState) {
+            case MasherState::Waiting:
                 posY = homeY;
-                velY = 0;
-                isJumping = false;
-                lastJumpTime = now;
-            }
-        } else {
-            // Wait underwater, jump when player is near and cooldown elapsed
-            if (playerNearby && now - lastJumpTime >= jumpCooldown) {
-                isJumping = true;
-                velY = jumpForce;
-            }
-        }
-    }
-    
-    void Render(const engine::Rect& viewWindow) override {
-        auto& gfx = engine::GetGraphics();
-        
-        int screenX = static_cast<int>(posX) - viewWindow.x;
-        int screenY = static_cast<int>(posY) - viewWindow.y;
-        
-        // Only draw when jumping (underwater otherwise)
-        if (!isJumping && state == State::Active) {
-            // Draw just a small indicator at water level
-            gfx.DrawRect({screenX + width/2 - 4, screenY - 4, 8, 4}, 
-                         engine::MakeColor(100, 100, 255), true);
-            return;
-        }
-        
-        if (screenX + width < 0 || screenX > viewWindow.w ||
-            screenY + height < 0 || screenY > viewWindow.h) {
-            return;
-        }
-        
-        engine::Color bodyColor = state == State::Dying ? 
-            engine::MakeColor(255, 150, 150) : engine::MakeColor(150, 50, 150);  // Purple
-        
-        // Body (fish shape)
-        gfx.DrawRect({screenX + 2, screenY + 8, width - 4, height - 16}, bodyColor, true);
-        
-        // Head/mouth
-        int mouthY = screenY + 4;
-        int mouthOpen = (currentFrame == 0) ? 8 : 12;
-        gfx.DrawRect({screenX, mouthY, width, mouthOpen}, bodyColor, true);
-        
-        // Teeth
-        gfx.DrawRect({screenX + 4, mouthY + mouthOpen - 4, 4, 4}, 
-                     engine::MakeColor(255, 255, 255), true);
-        gfx.DrawRect({screenX + width - 8, mouthY + mouthOpen - 4, 4, 4}, 
-                     engine::MakeColor(255, 255, 255), true);
-        
-        // Eye
-        int eyeX = facingRight ? screenX + width - 10 : screenX + 4;
-        gfx.DrawRect({eyeX, screenY + 10, 6, 6}, engine::MakeColor(255, 255, 255), true);
-        gfx.DrawRect({eyeX + 2, screenY + 12, 2, 2}, engine::MakeColor(0, 0, 0), true);
-        
-        // Tail fin
-        int tailX = facingRight ? screenX - 6 : screenX + width;
-        gfx.DrawRect({tailX, screenY + height/2 - 6, 8, 12}, bodyColor, true);
-        
-        // Dorsal fin
-        gfx.DrawRect({screenX + width/2 - 4, screenY, 8, 10}, bodyColor, true);
-        
-        // Border
-        gfx.DrawRect({screenX, screenY, width, height}, engine::MakeColor(0, 0, 0), false);
-    }
-};
-
-// ============================================================
-// NEWTRON (BLUE) - Chameleon that appears and shoots
-// Appears when Sonic approaches, fires projectile
-// ============================================================
-class NewtronBlue : public Enemy {
-private:
-    enum class NewtronState { Hidden, Appearing, Visible, Shooting };
-    NewtronState nState = NewtronState::Hidden;
-    float playerPosX = 0;
-    float playerPosY = 0;
-    float detectRange = 150.0f;
-    uint64_t stateTime = 0;
-    uint64_t shootCooldown = 2000;
-    uint64_t lastShot = 0;
-    
-    // Projectile
-    bool hasProjectile = false;
-    float projX = 0, projY = 0;
-    float projVelX = 0;
-    
-public:
-    NewtronBlue(float x, float y) : Enemy(Type::NewtronBlue, x, y, 48, 32) {}
-    
-    void SetPlayerPosition(float px, float py) { playerPosX = px; playerPosY = py; }
-    
-    void Update() override {
-        if (state != State::Active) {
-            if (state == State::Dying) {
-                velY += 0.3f;
+                currentFrame = 0;
+                if (now - waitStart >= 400) {
+                    float dx = std::abs(playerX - posX);
+                    if (dx < 70.0f && playerY < homeY) {
+                        masherState = MasherState::Jumping;
+                        velY = -9.0f;
+                        facingRight = (playerX > posX);
+                    }
+                }
+                break;
+            case MasherState::Jumping:
+                velY += 0.28f;
                 posY += velY;
-                if (engine::GetSystemTime() - deathTime > 500) state = State::Dead;
-            }
-            return;
-        }
-        
-        uint64_t now = engine::GetSystemTime();
-        float dist = std::abs(playerPosX - posX);
-        
-        switch (nState) {
-            case NewtronState::Hidden:
-                if (dist < detectRange) {
-                    nState = NewtronState::Appearing;
-                    stateTime = now;
+                currentFrame = 1;
+                facingRight = (playerX > posX);
+                if (velY >= 0 || homeY - posY > 96) {
+                    masherState = MasherState::Falling;
                 }
                 break;
-                
-            case NewtronState::Appearing:
-                if (now - stateTime > 500) {
-                    nState = NewtronState::Visible;
-                    facingRight = (playerPosX > posX);
-                }
-                break;
-                
-            case NewtronState::Visible:
-                if (now - lastShot > shootCooldown && dist < detectRange * 2) {
-                    nState = NewtronState::Shooting;
-                    stateTime = now;
-                    // Fire projectile
-                    hasProjectile = true;
-                    projX = facingRight ? posX + width : posX;
-                    projY = posY + height/2;
-                    projVelX = facingRight ? 4.0f : -4.0f;
-                    lastShot = now;
-                }
-                break;
-                
-            case NewtronState::Shooting:
-                if (now - stateTime > 300) {
-                    nState = NewtronState::Visible;
-                }
-                break;
-        }
-        
-        // Update projectile
-        if (hasProjectile) {
-            projX += projVelX;
-            if (std::abs(projX - posX) > 300) hasProjectile = false;
-        }
-        
-        // Animation
-        if (now - lastFrameTime > 150) {
-            currentFrame = (currentFrame + 1) % 2;
-            lastFrameTime = now;
-        }
-    }
-    
-    bool DamagesPlayer(const engine::Rect& playerBox, bool inBall) override {
-        if (state != State::Active) return false;
-        if (nState == NewtronState::Hidden) return false;
-        if (inBall) return false;
-        
-        // Check body collision
-        if (CollidesWith(playerBox)) return true;
-        
-        // Check projectile collision
-        if (hasProjectile) {
-            engine::Rect projBox = {static_cast<int>(projX), static_cast<int>(projY), 8, 8};
-            if (playerBox.x < projBox.x + projBox.w && playerBox.x + playerBox.w > projBox.x &&
-                playerBox.y < projBox.y + projBox.h && playerBox.y + playerBox.h > projBox.y) {
-                hasProjectile = false;
-                return true;
-            }
-        }
-        return false;
-    }
-    
-    void Render(const engine::Rect& viewWindow) override {
-        auto& gfx = engine::GetGraphics();
-        int screenX = static_cast<int>(posX) - viewWindow.x;
-        int screenY = static_cast<int>(posY) - viewWindow.y;
-        
-        if (nState == NewtronState::Hidden && state == State::Active) return;
-        
-        if (screenX + width < 0 || screenX > viewWindow.w ||
-            screenY + height < 0 || screenY > viewWindow.h) return;
-        
-        engine::Color bodyColor = engine::MakeColor(50, 100, 200);  // Blue
-        if (state == State::Dying) bodyColor = engine::MakeColor(255, 150, 150);
-        
-        // Body
-        gfx.DrawRect({screenX + 8, screenY + 4, width - 16, height - 8}, bodyColor, true);
-        // Head
-        gfx.DrawRect({screenX + (facingRight ? width - 16 : 0), screenY, 16, 16}, bodyColor, true);
-        // Tail
-        gfx.DrawRect({screenX + (facingRight ? 0 : width - 12), screenY + 8, 12, 8}, bodyColor, true);
-        // Eye
-        int eyeX = screenX + (facingRight ? width - 12 : 4);
-        gfx.DrawRect({eyeX, screenY + 4, 6, 6}, engine::MakeColor(255, 255, 255), true);
-        
-        // Projectile
-        if (hasProjectile) {
-            int px = static_cast<int>(projX) - viewWindow.x;
-            int py = static_cast<int>(projY) - viewWindow.y;
-            gfx.DrawRect({px - 4, py - 4, 8, 8}, engine::MakeColor(255, 200, 0), true);
-        }
-    }
-};
-
-// ============================================================
-// NEWTRON (GREEN) - Chameleon that flies toward player
-// Appears when approached, then flies at player
-// ============================================================
-class NewtronGreen : public Enemy {
-private:
-    enum class FlyState { Hidden, Appearing, Flying };
-    FlyState fState = FlyState::Hidden;
-    float playerPosX = 0;
-    float detectRange = 120.0f;
-    float flySpeed = 3.0f;
-    uint64_t stateTime = 0;
-    
-public:
-    NewtronGreen(float x, float y) : Enemy(Type::NewtronGreen, x, y, 48, 24) {}
-    
-    void SetPlayerPosition(float px) { playerPosX = px; }
-    
-    void Update() override {
-        if (state != State::Active) {
-            if (state == State::Dying) {
-                velY += 0.3f;
+            case MasherState::Falling:
+                velY += 0.32f;
                 posY += velY;
-                if (engine::GetSystemTime() - deathTime > 500) state = State::Dead;
-            }
-            return;
-        }
-        
-        uint64_t now = engine::GetSystemTime();
-        float dist = std::abs(playerPosX - posX);
-        
-        switch (fState) {
-            case FlyState::Hidden:
-                if (dist < detectRange) {
-                    fState = FlyState::Appearing;
-                    stateTime = now;
+                currentFrame = 0;
+                facingRight = (playerX > posX);
+                if (posY >= homeY) {
+                    posY = homeY;
+                    velY = 0;
+                    masherState = MasherState::Waiting;
+                    waitStart = now;
                 }
                 break;
-                
-            case FlyState::Appearing:
-                if (now - stateTime > 400) {
-                    fState = FlyState::Flying;
-                    facingRight = (playerPosX > posX);
-                    velX = facingRight ? flySpeed : -flySpeed;
-                }
-                break;
-                
-            case FlyState::Flying:
-                posX += velX;
-                // Fly off screen eventually
-                break;
-        }
-        
-        if (now - lastFrameTime > 100) {
-            currentFrame = (currentFrame + 1) % 2;
-            lastFrameTime = now;
         }
     }
     
     void Render(const engine::Rect& viewWindow) override {
-        auto& gfx = engine::GetGraphics();
-        int screenX = static_cast<int>(posX) - viewWindow.x;
-        int screenY = static_cast<int>(posY) - viewWindow.y;
+        if (state == State::Dead) return;
+        if (masherState == MasherState::Waiting) return;
         
-        if (fState == FlyState::Hidden && state == State::Active) return;
-        
-        engine::Color bodyColor = engine::MakeColor(50, 180, 50);  // Green
-        if (state == State::Dying) bodyColor = engine::MakeColor(255, 150, 150);
-        
-        // Body (flying pose)
-        gfx.DrawRect({screenX + 4, screenY + 4, width - 8, height - 8}, bodyColor, true);
-        // Wings
-        int wingOffset = (currentFrame % 2) * 4;
-        gfx.DrawRect({screenX + width/2 - 8, screenY - 4 - wingOffset, 16, 8}, bodyColor, true);
-        // Eye
-        int eyeX = screenX + (facingRight ? width - 12 : 4);
-        gfx.DrawRect({eyeX, screenY + 6, 6, 6}, engine::MakeColor(255, 255, 255), true);
+        SpriteFrame frame = EnemyFrames::GetMasher(currentFrame);
+        RenderFrame(viewWindow, frame, facingRight);
     }
 };
 
-// ============================================================
-// BOMB - Round bomb enemy that walks and explodes
-// ============================================================
-class Bomb : public Enemy {
-private:
-    bool exploding = false;
-    uint64_t explodeTime = 0;
-    float moveSpeed = 1.0f;
-    uint64_t pauseTime = 0;
-    bool paused = false;
-    
-public:
-    Bomb(float x, float y) : Enemy(Type::Bomb, x, y, 30, 32) {}
-    
-    void Update() override {
-        if (state != State::Active) {
-            if (state == State::Dying) {
-                if (engine::GetSystemTime() - deathTime > 400) state = State::Dead;
-            }
-            return;
-        }
-        
-        uint64_t now = engine::GetSystemTime();
-        
-        if (exploding) {
-            if (now - explodeTime > 300) {
-                state = State::Dying;
-                deathTime = now;
-                if (onDeath) onDeath(posX + width/2, posY);
-            }
-            return;
-        }
-        
-        // Walk back and forth
-        if (!paused) {
-            float newX = posX + (facingRight ? moveSpeed : -moveSpeed);
-            
-            // Check for edges/walls
-            bool shouldTurn = false;
-            if (gridLayer) {
-                int checkX = facingRight ? 
-                    static_cast<int>(newX + width + 4) / 8 : 
-                    static_cast<int>(newX - 4) / 8;
-                int checkY = static_cast<int>(posY + height + 4) / 8;
-                int groundCheck = static_cast<int>(posY + height) / 8;
-                
-                // Check for wall or no ground ahead
-                if (gridLayer->GetTile(checkX, groundCheck) != 0 ||
-                    gridLayer->GetTile(checkX, checkY) == 0) {
-                    shouldTurn = true;
-                }
-            }
-            
-            if (shouldTurn) {
-                paused = true;
-                pauseTime = now;
-            } else {
-                posX = newX;
-            }
-        } else {
-            if (now - pauseTime > 400) {
-                paused = false;
-                facingRight = !facingRight;
-            }
-        }
-        
-        if (now - lastFrameTime > 120) {
-            currentFrame = (currentFrame + 1) % 4;
-            lastFrameTime = now;
-        }
-    }
-    
-    void Render(const engine::Rect& viewWindow) override {
-        auto& gfx = engine::GetGraphics();
-        int screenX = static_cast<int>(posX) - viewWindow.x;
-        int screenY = static_cast<int>(posY) - viewWindow.y;
-        
-        if (screenX + width < 0 || screenX > viewWindow.w) return;
-        
-        engine::Color bodyColor = exploding ? 
-            engine::MakeColor(255, 100, 50) : engine::MakeColor(40, 40, 40);
-        
-        // Round body
-        gfx.DrawRect({screenX + 3, screenY + 3, width - 6, height - 6}, bodyColor, true);
-        // Fuse
-        gfx.DrawRect({screenX + width/2 - 2, screenY - 4, 4, 8}, engine::MakeColor(200, 100, 50), true);
-        // Spark on fuse
-        if (currentFrame % 2 == 0) {
-            gfx.DrawRect({screenX + width/2 - 1, screenY - 6, 2, 2}, engine::MakeColor(255, 255, 0), true);
-        }
-        // Eyes
-        int eyeY = screenY + height/2 - 4;
-        gfx.DrawRect({screenX + 8, eyeY, 5, 5}, engine::MakeColor(255, 255, 255), true);
-        gfx.DrawRect({screenX + width - 13, eyeY, 5, 5}, engine::MakeColor(255, 255, 255), true);
-        // Feet
-        int footY = screenY + height - 6;
-        int footOffset = (currentFrame % 2) * 2;
-        gfx.DrawRect({screenX + 4 + footOffset, footY, 8, 6}, engine::MakeColor(200, 50, 50), true);
-        gfx.DrawRect({screenX + width - 12 - footOffset, footY, 8, 6}, engine::MakeColor(200, 50, 50), true);
-        
-        // Explosion
-        if (exploding) {
-            int r = static_cast<int>((engine::GetSystemTime() - explodeTime) / 10);
-            gfx.DrawRect({screenX + width/2 - r, screenY + height/2 - r, r*2, r*2}, 
-                         engine::MakeColor(255, 200, 50, 150), true);
-        }
-    }
-};
+//============================================================================
+//BATBRAIN - Hangs from ceiling, swoops down when player approaches
+//============================================================================
 
-// ============================================================
-// CATERKILLER - Segmented caterpillar enemy
-// Head is vulnerable, body segments have spikes
-// ============================================================
-class Caterkiller : public Enemy {
-private:
-    static constexpr int NUM_SEGMENTS = 4;
-    float segmentX[NUM_SEGMENTS];
-    float segmentY[NUM_SEGMENTS];
-    float moveSpeed = 0.8f;
-    int movePhase = 0;
-    
-public:
-    Caterkiller(float x, float y) : Enemy(Type::Caterkiller, x, y, 64, 20) {
-        // Initialize segments
-        for (int i = 0; i < NUM_SEGMENTS; ++i) {
-            segmentX[i] = x - i * 14;
-            segmentY[i] = y;
-        }
-    }
-    
-    void Update() override {
-        if (state != State::Active) {
-            if (state == State::Dying) {
-                velY += 0.3f;
-                posY += velY;
-                if (engine::GetSystemTime() - deathTime > 500) state = State::Dead;
-            }
-            return;
-        }
-        
-        uint64_t now = engine::GetSystemTime();
-        
-        // Move head
-        posX += facingRight ? moveSpeed : -moveSpeed;
-        
-        // Animate body segments (wave motion)
-        for (int i = 0; i < NUM_SEGMENTS; ++i) {
-            float targetX = (i == 0) ? posX - 14 : segmentX[i-1] - 14;
-            segmentX[i] += (targetX - segmentX[i]) * 0.3f;
-            segmentY[i] = posY + std::sin((now / 100.0f) + i) * 3.0f;
-        }
-        
-        // Check for turn
-        if (gridLayer) {
-            int checkX = static_cast<int>(facingRight ? posX + 20 : posX - 4) / 8;
-            int checkY = static_cast<int>(posY + height + 4) / 8;
-            if (gridLayer->GetTile(checkX, checkY) == 0) {
-                facingRight = !facingRight;
-            }
-        }
-        
-        if (now - lastFrameTime > 150) {
-            currentFrame = (currentFrame + 1) % 3;
-            lastFrameTime = now;
-        }
-    }
-    
-    void Render(const engine::Rect& viewWindow) override {
-        auto& gfx = engine::GetGraphics();
-        int screenX = static_cast<int>(posX) - viewWindow.x;
-        int screenY = static_cast<int>(posY) - viewWindow.y;
-        
-        // Draw segments (back to front)
-        for (int i = NUM_SEGMENTS - 1; i >= 0; --i) {
-            int sx = static_cast<int>(segmentX[i]) - viewWindow.x;
-            int sy = static_cast<int>(segmentY[i]) - viewWindow.y;
-            
-            // Body segment (purple)
-            gfx.DrawRect({sx, sy, 14, 14}, engine::MakeColor(150, 50, 150), true);
-            // Spike on top
-            gfx.DrawRect({sx + 5, sy - 4, 4, 6}, engine::MakeColor(200, 200, 200), true);
-        }
-        
-        // Head (orange/red)
-        engine::Color headColor = state == State::Dying ? 
-            engine::MakeColor(255, 150, 150) : engine::MakeColor(220, 100, 50);
-        gfx.DrawRect({screenX, screenY - 2, 16, 16}, headColor, true);
-        // Eyes
-        int eyeX = screenX + (facingRight ? 10 : 2);
-        gfx.DrawRect({eyeX, screenY + 2, 4, 4}, engine::MakeColor(255, 255, 255), true);
-        // Antennae
-        gfx.DrawRect({screenX + 4, screenY - 6, 2, 6}, headColor, true);
-        gfx.DrawRect({screenX + 10, screenY - 6, 2, 6}, headColor, true);
-    }
-};
-
-// ============================================================
-// BATBRAIN - Bat that hangs from ceiling, swoops when player near
-// ============================================================
 class Batbrain : public Enemy {
 private:
     enum class BatState { Hanging, Swooping, Flying };
-    BatState bState = BatState::Hanging;
-    float homeY;
-    float playerPosX = 0;
-    float detectRange = 100.0f;
-    float swoopSpeed = 3.0f;
+    BatState batState = BatState::Hanging;
     
-public:
-    Batbrain(float x, float y) : Enemy(Type::Batbrain, x, y, 32, 24), homeY(y) {}
-    
-    void SetPlayerPosition(float px) { playerPosX = px; }
-    
-    void Update() override {
-        if (state != State::Active) {
-            if (state == State::Dying) {
-                velY += 0.3f;
-                posY += velY;
-                if (engine::GetSystemTime() - deathTime > 500) state = State::Dead;
-            }
-            return;
-        }
-        
-        float dist = std::abs(playerPosX - posX);
-        
-        switch (bState) {
-            case BatState::Hanging:
-                if (dist < detectRange) {
-                    bState = BatState::Swooping;
-                    facingRight = (playerPosX > posX);
-                    velX = facingRight ? swoopSpeed : -swoopSpeed;
-                    velY = 2.0f;
-                }
-                break;
-                
-            case BatState::Swooping:
-                posX += velX;
-                posY += velY;
-                if (posY > homeY + 80) {
-                    bState = BatState::Flying;
-                    velY = -1.5f;
-                }
-                break;
-                
-            case BatState::Flying:
-                posX += velX;
-                posY += velY;
-                // Fly off screen
-                break;
-        }
-        
-        uint64_t now = engine::GetSystemTime();
-        if (now - lastFrameTime > 80) {
-            currentFrame = (currentFrame + 1) % 2;
-            lastFrameTime = now;
-        }
-    }
-    
-    void Render(const engine::Rect& viewWindow) override {
-        auto& gfx = engine::GetGraphics();
-        int screenX = static_cast<int>(posX) - viewWindow.x;
-        int screenY = static_cast<int>(posY) - viewWindow.y;
-        
-        engine::Color bodyColor = state == State::Dying ? 
-            engine::MakeColor(255, 150, 150) : engine::MakeColor(80, 50, 100);
-        
-        // Body
-        gfx.DrawRect({screenX + 8, screenY + 4, width - 16, height - 8}, bodyColor, true);
-        
-        // Wings
-        int wingY = (bState == BatState::Hanging) ? 0 : ((currentFrame % 2) * 6 - 3);
-        gfx.DrawRect({screenX - 4, screenY + 8 + wingY, 12, 8}, bodyColor, true);
-        gfx.DrawRect({screenX + width - 8, screenY + 8 - wingY, 12, 8}, bodyColor, true);
-        
-        // Eyes (red)
-        gfx.DrawRect({screenX + 10, screenY + 8, 4, 4}, engine::MakeColor(255, 50, 50), true);
-        gfx.DrawRect({screenX + width - 14, screenY + 8, 4, 4}, engine::MakeColor(255, 50, 50), true);
-        
-        // Ears
-        gfx.DrawRect({screenX + 8, screenY, 4, 6}, bodyColor, true);
-        gfx.DrawRect({screenX + width - 12, screenY, 4, 6}, bodyColor, true);
-    }
-};
-
-// ============================================================
-// BURROBOT - Drilling robot that pops up from ground
-// ============================================================
-class Burrobot : public Enemy {
-private:
-    enum class BurroState { Underground, Rising, Active, Jumping };
-    BurroState bState = BurroState::Underground;
-    float homeY;
-    float playerPosX = 0;
-    float detectRange = 80.0f;
-    float jumpForce = -8.0f;
-    
-public:
-    Burrobot(float x, float y) : Enemy(Type::Burrobot, x, y, 30, 38), homeY(y) {
-        posY = y + 30;  // Start mostly underground
-    }
-    
-    void SetPlayerPosition(float px) { playerPosX = px; }
-    
-    void Update() override {
-        if (state != State::Active) {
-            if (state == State::Dying) {
-                velY += 0.3f;
-                posY += velY;
-                if (engine::GetSystemTime() - deathTime > 500) state = State::Dead;
-            }
-            return;
-        }
-        
-        float dist = std::abs(playerPosX - posX);
-        
-        switch (bState) {
-            case BurroState::Underground:
-                if (dist < detectRange) {
-                    bState = BurroState::Rising;
-                }
-                break;
-                
-            case BurroState::Rising:
-                posY -= 2.0f;
-                if (posY <= homeY) {
-                    posY = homeY;
-                    bState = BurroState::Active;
-                }
-                break;
-                
-            case BurroState::Active:
-                if (dist < detectRange / 2) {
-                    bState = BurroState::Jumping;
-                    velY = jumpForce;
-                    facingRight = (playerPosX > posX);
-                    velX = facingRight ? 2.0f : -2.0f;
-                }
-                break;
-                
-            case BurroState::Jumping:
-                velY += 0.4f;
-                posX += velX;
-                posY += velY;
-                if (posY >= homeY && velY > 0) {
-                    posY = homeY;
-                    velY = 0;
-                    bState = BurroState::Active;
-                }
-                break;
-        }
-        
-        uint64_t now = engine::GetSystemTime();
-        if (now - lastFrameTime > 100) {
-            currentFrame = (currentFrame + 1) % 2;
-            lastFrameTime = now;
-        }
-    }
-    
-    void Render(const engine::Rect& viewWindow) override {
-        auto& gfx = engine::GetGraphics();
-        int screenX = static_cast<int>(posX) - viewWindow.x;
-        int screenY = static_cast<int>(posY) - viewWindow.y;
-        
-        engine::Color bodyColor = state == State::Dying ? 
-            engine::MakeColor(255, 150, 150) : engine::MakeColor(100, 100, 150);
-        
-        // Body
-        gfx.DrawRect({screenX + 4, screenY + 8, width - 8, height - 16}, bodyColor, true);
-        // Drill (head)
-        int drillOffset = (currentFrame % 2) * 2;
-        gfx.DrawRect({screenX + 8, screenY - drillOffset, 14, 12}, engine::MakeColor(200, 200, 200), true);
-        gfx.DrawRect({screenX + 12, screenY - 4 - drillOffset, 6, 6}, engine::MakeColor(150, 150, 150), true);
-        // Treads
-        gfx.DrawRect({screenX, screenY + height - 10, 10, 10}, engine::MakeColor(60, 60, 60), true);
-        gfx.DrawRect({screenX + width - 10, screenY + height - 10, 10, 10}, engine::MakeColor(60, 60, 60), true);
-        // Eyes
-        gfx.DrawRect({screenX + 8, screenY + 12, 4, 4}, engine::MakeColor(255, 0, 0), true);
-        gfx.DrawRect({screenX + width - 12, screenY + 12, 4, 4}, engine::MakeColor(255, 0, 0), true);
-    }
-};
-
-// ============================================================
-// ROLLER - Armadillo that curls into a ball and rolls
-// ============================================================
-class Roller : public Enemy {
-private:
-    enum class RollerState { Idle, Rolling };
-    RollerState rState = RollerState::Idle;
-    float rollSpeed = 5.0f;
-    float playerPosX = 0;
-    float detectRange = 150.0f;
-    uint64_t rollStartTime = 0;
-    
-public:
-    Roller(float x, float y) : Enemy(Type::Roller, x, y, 40, 30) {}
-    
-    void SetPlayerPosition(float px) { playerPosX = px; }
-    
-    void Update() override {
-        if (state != State::Active) {
-            if (state == State::Dying) {
-                velY += 0.3f;
-                posY += velY;
-                if (engine::GetSystemTime() - deathTime > 500) state = State::Dead;
-            }
-            return;
-        }
-        
-        uint64_t now = engine::GetSystemTime();
-        float dist = std::abs(playerPosX - posX);
-        
-        switch (rState) {
-            case RollerState::Idle:
-                if (dist < detectRange) {
-                    rState = RollerState::Rolling;
-                    facingRight = (playerPosX > posX);
-                    rollStartTime = now;
-                    width = 26;
-                    height = 26;
-                }
-                break;
-                
-            case RollerState::Rolling:
-                posX += facingRight ? rollSpeed : -rollSpeed;
-                
-                // Stop after a while
-                if (now - rollStartTime > 2000) {
-                    rState = RollerState::Idle;
-                    width = 40;
-                    height = 30;
-                }
-                break;
-        }
-        
-        if (now - lastFrameTime > 60) {
-            currentFrame = (currentFrame + 1) % 4;
-            lastFrameTime = now;
-        }
-    }
-    
-    void Render(const engine::Rect& viewWindow) override {
-        auto& gfx = engine::GetGraphics();
-        int screenX = static_cast<int>(posX) - viewWindow.x;
-        int screenY = static_cast<int>(posY) - viewWindow.y;
-        
-        engine::Color bodyColor = state == State::Dying ? 
-            engine::MakeColor(255, 150, 150) : engine::MakeColor(200, 100, 50);
-        
-        if (rState == RollerState::Rolling) {
-            // Ball form
-            gfx.DrawRect({screenX + 3, screenY + 3, 20, 20}, bodyColor, true);
-            // Shell pattern
-            gfx.DrawRect({screenX + 8, screenY + 5 + (currentFrame % 4) * 2, 10, 4}, 
-                         engine::MakeColor(150, 75, 40), true);
-        } else {
-            // Standing form
-            gfx.DrawRect({screenX + 4, screenY + 4, width - 8, height - 8}, bodyColor, true);
-            // Shell
-            gfx.DrawRect({screenX + 10, screenY, width - 20, height - 10}, 
-                         engine::MakeColor(150, 75, 40), true);
-            // Head
-            int headX = facingRight ? screenX + width - 14 : screenX;
-            gfx.DrawRect({headX, screenY + height/2 - 6, 14, 12}, bodyColor, true);
-            // Eye
-            gfx.DrawRect({headX + (facingRight ? 8 : 2), screenY + height/2 - 2, 4, 4}, 
-                         engine::MakeColor(0, 0, 0), true);
-        }
-    }
-};
-
-// ============================================================
-// JAWS - Fish enemy that swims in water
-// ============================================================
-class Jaws : public Enemy {
-private:
-    float swimSpeed = 2.0f;
-    float homeY;
-    float amplitude = 20.0f;
-    float swimOffset = 0;
-    
-public:
-    Jaws(float x, float y) : Enemy(Type::Jaws, x, y, 32, 20), homeY(y) {}
-    
-    void Update() override {
-        if (state != State::Active) {
-            if (state == State::Dying) {
-                velY += 0.2f;  // Slower fall in water
-                posY += velY;
-                if (engine::GetSystemTime() - deathTime > 700) state = State::Dead;
-            }
-            return;
-        }
-        
-        // Swim back and forth
-        posX += facingRight ? swimSpeed : -swimSpeed;
-        
-        // Sinusoidal vertical motion
-        swimOffset += 0.05f;
-        posY = homeY + std::sin(swimOffset) * amplitude;
-        
-        // Turn at edges (simplified)
-        if (posX < 0 || posX > 10000) facingRight = !facingRight;
-        
-        uint64_t now = engine::GetSystemTime();
-        if (now - lastFrameTime > 150) {
-            currentFrame = (currentFrame + 1) % 3;
-            lastFrameTime = now;
-        }
-    }
-    
-    void Render(const engine::Rect& viewWindow) override {
-        auto& gfx = engine::GetGraphics();
-        int screenX = static_cast<int>(posX) - viewWindow.x;
-        int screenY = static_cast<int>(posY) - viewWindow.y;
-        
-        if (screenX + width < 0 || screenX > viewWindow.w) return;
-        
-        engine::Color bodyColor = state == State::Dying ? 
-            engine::MakeColor(255, 150, 150) : engine::MakeColor(50, 100, 200);
-        
-        // Body
-        gfx.DrawRect({screenX + 4, screenY + 2, width - 8, height - 4}, bodyColor, true);
-        // Mouth (opening animation)
-        int mouthOpen = (currentFrame == 2) ? 6 : 3;
-        int mouthX = facingRight ? screenX + width - 8 : screenX;
-        gfx.DrawRect({mouthX, screenY + height/2 - mouthOpen/2, 8, mouthOpen}, 
-                     engine::MakeColor(100, 50, 50), true);
-        // Teeth
-        gfx.DrawRect({mouthX + 2, screenY + height/2 - 2, 4, 2}, 
-                     engine::MakeColor(255, 255, 255), true);
-        // Eye
-        int eyeX = facingRight ? screenX + width - 14 : screenX + 6;
-        gfx.DrawRect({eyeX, screenY + 4, 4, 4}, engine::MakeColor(255, 255, 255), true);
-        // Tail
-        int tailX = facingRight ? screenX - 6 : screenX + width - 2;
-        gfx.DrawRect({tailX, screenY + height/2 - 6, 8, 12}, bodyColor, true);
-    }
-};
-
-// ============================================================
-// BALLHOG - Pig that throws bouncing bombs
-// ============================================================
-class BallHog : public Enemy {
-private:
-    float playerPosX = 0;
-    float throwRange = 200.0f;
-    uint64_t lastThrow = 0;
-    uint64_t throwCooldown = 2500;
-    bool throwing = false;
-    uint64_t throwAnimTime = 0;
-    
-    // Thrown ball
-    struct ThrownBall {
-        float x, y, velX, velY;
-        bool active = false;
-    };
-    ThrownBall ball;
-    
-public:
-    BallHog(float x, float y) : Enemy(Type::BallHog, x, y, 32, 32) {}
-    
-    void SetPlayerPosition(float px) { playerPosX = px; }
-    
-    void Update() override {
-        if (state != State::Active) {
-            if (state == State::Dying) {
-                velY += 0.3f;
-                posY += velY;
-                if (engine::GetSystemTime() - deathTime > 500) state = State::Dead;
-            }
-            return;
-        }
-        
-        uint64_t now = engine::GetSystemTime();
-        float dist = std::abs(playerPosX - posX);
-        
-        // Face player
-        facingRight = (playerPosX > posX);
-        
-        // Throw ball
-        if (dist < throwRange && now - lastThrow > throwCooldown) {
-            throwing = true;
-            throwAnimTime = now;
-            lastThrow = now;
-            
-            // Launch ball
-            ball.active = true;
-            ball.x = posX + (facingRight ? width : 0);
-            ball.y = posY;
-            ball.velX = facingRight ? 3.0f : -3.0f;
-            ball.velY = -4.0f;
-        }
-        
-        if (throwing && now - throwAnimTime > 400) {
-            throwing = false;
-        }
-        
-        // Update ball
-        if (ball.active) {
-            ball.velY += 0.2f;
-            ball.x += ball.velX;
-            ball.y += ball.velY;
-            
-            // Bounce on ground
-            if (ball.y > posY + height && ball.velY > 0) {
-                ball.velY = -ball.velY * 0.7f;
-                if (std::abs(ball.velY) < 1.0f) ball.active = false;
-            }
-            
-            // Despawn if too far
-            if (std::abs(ball.x - posX) > 300) ball.active = false;
-        }
-        
-        if (now - lastFrameTime > 150) {
-            currentFrame = (currentFrame + 1) % 2;
-            lastFrameTime = now;
-        }
-    }
-    
-    bool DamagesPlayer(const engine::Rect& playerBox, bool inBall) override {
-        if (state != State::Active) return false;
-        if (inBall) return false;
-        
-        // Body collision
-        if (CollidesWith(playerBox)) return true;
-        
-        // Ball collision
-        if (ball.active) {
-            engine::Rect ballBox = {static_cast<int>(ball.x) - 6, static_cast<int>(ball.y) - 6, 12, 12};
-            if (playerBox.x < ballBox.x + ballBox.w && playerBox.x + playerBox.w > ballBox.x &&
-                playerBox.y < ballBox.y + ballBox.h && playerBox.y + playerBox.h > ballBox.y) {
-                ball.active = false;
-                return true;
-            }
-        }
-        return false;
-    }
-    
-    void Render(const engine::Rect& viewWindow) override {
-        auto& gfx = engine::GetGraphics();
-        int screenX = static_cast<int>(posX) - viewWindow.x;
-        int screenY = static_cast<int>(posY) - viewWindow.y;
-        
-        engine::Color bodyColor = state == State::Dying ? 
-            engine::MakeColor(255, 150, 150) : engine::MakeColor(200, 150, 150);
-        
-        // Body
-        gfx.DrawRect({screenX + 4, screenY + 8, width - 8, height - 12}, bodyColor, true);
-        // Snout
-        int snoutX = facingRight ? screenX + width - 8 : screenX;
-        gfx.DrawRect({snoutX, screenY + height/2 - 4, 12, 10}, bodyColor, true);
-        // Nostrils
-        gfx.DrawRect({snoutX + 2, screenY + height/2, 2, 2}, engine::MakeColor(150, 100, 100), true);
-        gfx.DrawRect({snoutX + 6, screenY + height/2, 2, 2}, engine::MakeColor(150, 100, 100), true);
-        // Eyes
-        int eyeX = facingRight ? screenX + width - 16 : screenX + 8;
-        gfx.DrawRect({eyeX, screenY + 10, 4, 4}, engine::MakeColor(0, 0, 0), true);
-        // Ears
-        gfx.DrawRect({screenX + 8, screenY, 6, 8}, bodyColor, true);
-        gfx.DrawRect({screenX + width - 14, screenY, 6, 8}, bodyColor, true);
-        
-        // Thrown ball
-        if (ball.active) {
-            int bx = static_cast<int>(ball.x) - viewWindow.x;
-            int by = static_cast<int>(ball.y) - viewWindow.y;
-            gfx.DrawRect({bx - 6, by - 6, 12, 12}, engine::MakeColor(50, 50, 50), true);
-            // Fuse spark
-            if (currentFrame % 2) {
-                gfx.DrawRect({bx - 1, by - 8, 2, 4}, engine::MakeColor(255, 200, 50), true);
-            }
-        }
-    }
-};
-
-// ============================================================
-// ORBINAUT - Enemy with spiked balls orbiting around it
-// ============================================================
-class Orbinaut : public Enemy {
-private:
-    static constexpr int NUM_ORBS = 4;
-    float orbAngle = 0;
-    float orbRadius = 24.0f;
-    float orbitSpeed = 0.05f;
-    float moveSpeed = 1.0f;
-    bool orbsPresent[NUM_ORBS] = {true, true, true, true};
-    
-public:
-    Orbinaut(float x, float y) : Enemy(Type::Orbinaut, x, y, 32, 32) {}
-    
-    void Update() override {
-        if (state != State::Active) {
-            if (state == State::Dying) {
-                velY += 0.3f;
-                posY += velY;
-                if (engine::GetSystemTime() - deathTime > 500) state = State::Dead;
-            }
-            return;
-        }
-        
-        // Move slowly
-        posX += facingRight ? moveSpeed : -moveSpeed;
-        
-        // Rotate orbs
-        orbAngle += orbitSpeed;
-        if (orbAngle > 6.28318f) orbAngle -= 6.28318f;
-        
-        // Turn at edges
-        if (posX < 0 || posX > 10000) facingRight = !facingRight;
-    }
-    
-    bool DamagesPlayer(const engine::Rect& playerBox, bool inBall) override {
-        if (state != State::Active) return false;
-        if (inBall) return false;
-        
-        // Check orb collisions
-        float cx = posX + width/2;
-        float cy = posY + height/2;
-        
-        for (int i = 0; i < NUM_ORBS; ++i) {
-            if (!orbsPresent[i]) continue;
-            
-            float angle = orbAngle + (6.28318f * i / NUM_ORBS);
-            float ox = cx + std::cos(angle) * orbRadius;
-            float oy = cy + std::sin(angle) * orbRadius;
-            
-            engine::Rect orbBox = {static_cast<int>(ox) - 6, static_cast<int>(oy) - 6, 12, 12};
-            if (playerBox.x < orbBox.x + orbBox.w && playerBox.x + playerBox.w > orbBox.x &&
-                playerBox.y < orbBox.y + orbBox.h && playerBox.y + playerBox.h > orbBox.y) {
-                return true;
-            }
-        }
-        
-        // Center body is also dangerous
-        return CollidesWith(playerBox);
-    }
-    
-    void Render(const engine::Rect& viewWindow) override {
-        auto& gfx = engine::GetGraphics();
-        int screenX = static_cast<int>(posX) - viewWindow.x;
-        int screenY = static_cast<int>(posY) - viewWindow.y;
-        
-        engine::Color bodyColor = state == State::Dying ? 
-            engine::MakeColor(255, 150, 150) : engine::MakeColor(50, 100, 50);
-        
-        // Center body
-        gfx.DrawRect({screenX + 8, screenY + 8, 16, 16}, bodyColor, true);
-        // Eyes
-        gfx.DrawRect({screenX + 10, screenY + 12, 4, 4}, engine::MakeColor(255, 50, 50), true);
-        gfx.DrawRect({screenX + 18, screenY + 12, 4, 4}, engine::MakeColor(255, 50, 50), true);
-        
-        // Orbiting spike balls
-        float cx = screenX + width/2;
-        float cy = screenY + height/2;
-        
-        for (int i = 0; i < NUM_ORBS; ++i) {
-            if (!orbsPresent[i]) continue;
-            
-            float angle = orbAngle + (6.28318f * i / NUM_ORBS);
-            int ox = static_cast<int>(cx + std::cos(angle) * orbRadius);
-            int oy = static_cast<int>(cy + std::sin(angle) * orbRadius);
-            
-            // Spike ball
-            gfx.DrawRect({ox - 5, oy - 5, 10, 10}, engine::MakeColor(200, 50, 50), true);
-            // Spikes
-            gfx.DrawRect({ox - 2, oy - 8, 4, 4}, engine::MakeColor(200, 50, 50), true);
-            gfx.DrawRect({ox - 2, oy + 4, 4, 4}, engine::MakeColor(200, 50, 50), true);
-            gfx.DrawRect({ox - 8, oy - 2, 4, 4}, engine::MakeColor(200, 50, 50), true);
-            gfx.DrawRect({ox + 4, oy - 2, 4, 4}, engine::MakeColor(200, 50, 50), true);
-        }
-    }
-};
-
-// ============================================================
-// ANIMAL - Small critters freed from destroyed enemies
-// ============================================================
-enum class AnimalType {
-    Flicky,     // Blue bird
-    Pocky,      // Rabbit  
-    Cucky,      // Chicken
-    Ricky       // Squirrel
-};
-
-class Animal {
-public:
-    float posX, posY;
-    float velX, velY;
-    AnimalType type;
-    bool isActive = true;
-    
-    int width = 16;
-    int height = 16;
-    
+    float homeX, homeY;
+    float playerX = 0, playerY = 0;
     int animFrame = 0;
     uint64_t lastFrameTime = 0;
-    uint64_t spawnTime = 0;
     
-    static constexpr uint64_t LIFETIME = 5000;  // Disappear after 5 seconds
-    static constexpr uint64_t FRAME_DELAY = 100;
-    
-    Animal(float x, float y, AnimalType t) 
-        : posX(x), posY(y), type(t) {
-        // Random initial velocity
-        velX = (std::rand() % 5 - 2) * 0.5f;
-        velY = -6.0f;  // Pop up
-        spawnTime = engine::GetSystemTime();
-        lastFrameTime = spawnTime;
+public:
+    Batbrain(float x, float y) : Enemy(Type::Masher, x, y, 32, 24) {  //reuse Masher type
+        homeX = x;
+        homeY = y;
+        lastFrameTime = engine::GetSystemTime();
     }
     
-    void Update() {
-        if (!isActive) return;
+    void SetPlayerPosition(float px, float py) override {
+        playerX = px;
+        playerY = py;
+    }
+    
+    void Update() override {
+        if (state == State::Dying) { UpdateDeathAnimation(); return; }
+        if (state == State::Dead) return;
         
         uint64_t now = engine::GetSystemTime();
         
-        // Animate
-        if (now - lastFrameTime >= FRAME_DELAY) {
+//animate wings
+        if (now - lastFrameTime >= 100) {
             animFrame = (animFrame + 1) % 2;
             lastFrameTime = now;
         }
         
-        // Physics
-        velY += 0.3f;  // Gravity
-        posX += velX;
-        posY += velY;
+        switch (batState) {
+            case BatState::Hanging:
+                {
+                    float dx = playerX - posX;
+                    float dy = playerY - posY;
+                    float dist = std::sqrt(dx*dx + dy*dy);
+                    
+                    if (dist < 120.0f && playerY > posY) {
+//player is below and close - swoop!
+                        batState = BatState::Swooping;
+                        facingRight = (dx > 0);
+                    }
+                }
+                break;
+                
+            case BatState::Swooping:
+//dive toward player
+                {
+                    float dx = playerX - posX;
+                    float dy = playerY - posY;
+                    float dist = std::sqrt(dx*dx + dy*dy);
+                    
+                    if (dist > 1.0f) {
+                        posX += (dx / dist) * 3.0f;
+                        posY += (dy / dist) * 2.5f;
+                    }
+                    
+                    facingRight = (dx > 0);
+                    
+//after diving past player Y or timeout, start flying
+                    if (posY > playerY + 30 || posY > homeY + 200) {
+                        batState = BatState::Flying;
+                    }
+                }
+                break;
+                
+            case BatState::Flying:
+//fly in a wave pattern away
+                posX += facingRight ? 2.0f : -2.0f;
+                posY += std::sin(now / 150.0f) * 1.5f;
+                
+//return home if far away
+                if (std::abs(posX - homeX) > 300) {
+                    posX = homeX;
+                    posY = homeY;
+                    batState = BatState::Hanging;
+                }
+                break;
+        }
+    }
+    
+    void Render(const engine::Rect& viewWindow) override {
+        if (state == State::Dead) return;
         
-        // Bounce on ground (simplified)
-        if (posY > 1600) {  // Approximate ground level
-            posY = 1600;
-            velY = -4.0f;  // Bounce
-            velX *= 0.8f;  // Slow down
+        SpriteFrame frame = EnemyFrames::GetBatbrain(animFrame);
+        RenderFrame(viewWindow, frame, facingRight);
+    }
+};
+
+//============================================================================
+//SUPPORT CLASSES
+//============================================================================
+
+//=== ANIMAL TYPES ===
+enum class AnimalType {
+    Flicky,  //blue bird - most common
+    Pocky,  //tan rabbit
+    Cucky,  //yellow chicken
+    Pecky,  //blue penguin
+    Rocky,  //gray seal
+    Picky,  //pink pig
+    Ricky  //brown squirrel
+};
+
+class Animal {
+public:
+    float x, y, velX, velY;
+    bool active = true;
+    uint64_t spawnTime;
+    AnimalType type;
+    bool onGround = false;
+    int bounceCount = 0;
+    static constexpr float GRAVITY = 800.0f;  //pixels per second^2
+    static constexpr float INITIAL_VEL_Y = -300.0f;  //initial upward pop
+    static constexpr float HORIZONTAL_SPEED = 100.0f;  //leftward movement
+    static constexpr float BOUNCE_DAMPENING = 0.9f;
+    static constexpr int MAX_BOUNCES = 3;
+    static constexpr uint64_t LIFETIME_MS = 8000;  //8 seconds
+    
+    Animal(float px, float py) : x(px), y(py) {
+        spawnTime = engine::GetSystemTime();
+        velY = INITIAL_VEL_Y;
+        velX = -HORIZONTAL_SPEED;  //always move left initially
+//randomly pick an animal type
+        type = static_cast<AnimalType>(rand() % 7);
+    }
+    
+    Animal(float px, float py, AnimalType animalType) : x(px), y(py), type(animalType) {
+        spawnTime = engine::GetSystemTime();
+        velY = INITIAL_VEL_Y;
+        velX = -HORIZONTAL_SPEED;
+    }
+    
+    void Update() {
+        if (!active) return;
+        
+//calculate delta time (assuming ~60fps, use 1/60 if no clock available)
+        float dt = 1.0f / 60.0f;
+        
+//apply gravity
+        velY += GRAVITY * dt;
+        
+        x += velX * dt;
+        y += velY * dt;
+        
+//simple ground collision - bounce at a fixed Y level or use grid
+//for now, bounce at a reasonable ground level
+        float groundY = 500.0f;  //this should be determined from grid
+        if (y > groundY && velY > 0) {
+            y = groundY;
+            bounceCount++;
+            if (bounceCount < MAX_BOUNCES) {
+                velY = -velY * BOUNCE_DAMPENING;
+//possibly reverse horizontal direction on bounce
+                if (rand() % 2 == 0) velX = -velX;
+            } else {
+//stop bouncing, just hop along
+                velY = 0;
+                onGround = true;
+            }
         }
         
-        // Lifetime check
-        if (now - spawnTime > LIFETIME) {
-            isActive = false;
+//deactivate after lifetime
+        if (engine::GetSystemTime() - spawnTime > LIFETIME_MS) {
+            active = false;
         }
     }
     
     void Render(const engine::Rect& viewWindow) {
-        if (!isActive) return;
-        
+        if (!active) return;
         auto& gfx = engine::GetGraphics();
+        int screenX = static_cast<int>(x) - viewWindow.x;
+        int screenY = static_cast<int>(y) - viewWindow.y;
         
-        int screenX = static_cast<int>(posX) - viewWindow.x;
-        int screenY = static_cast<int>(posY) - viewWindow.y;
+//get the appropriate animal film based on type
+        const char* filmName = GetFilmName();
+        auto* animalFilm = ResourceManager::Instance().GetFilm(filmName);
         
-        if (screenX + width < 0 || screenX > viewWindow.w ||
-            screenY + height < 0 || screenY > viewWindow.h) {
-            return;
-        }
-        
-        engine::Color bodyColor = engine::MakeColor(100, 100, 100);  // Default gray
-        switch (type) {
-            case AnimalType::Flicky:
-                bodyColor = engine::MakeColor(100, 150, 255);  // Blue
-                break;
-            case AnimalType::Pocky:
-                bodyColor = engine::MakeColor(255, 200, 150);  // Tan
-                break;
-            case AnimalType::Cucky:
-                bodyColor = engine::MakeColor(255, 255, 100);  // Yellow
-                break;
-            case AnimalType::Ricky:
-                bodyColor = engine::MakeColor(200, 150, 100);  // Brown
-                break;
-            default:
-                break;
-        }
-        
-        // Simple body
-        gfx.DrawRect({screenX + 2, screenY + 4, width - 4, height - 4}, bodyColor, true);
-        
-        // Head
-        gfx.DrawRect({screenX + 4, screenY, width - 8, 8}, bodyColor, true);
-        
-        // Eye
-        gfx.DrawRect({screenX + 6, screenY + 2, 4, 4}, engine::MakeColor(0, 0, 0), true);
-        
-        // Wings/ears (animate)
-        int wingOffset = (animFrame == 0) ? -2 : 2;
-        if (type == AnimalType::Flicky || type == AnimalType::Cucky) {
-            // Wings
-            gfx.DrawRect({screenX, screenY + 6 + wingOffset, 4, 6}, bodyColor, true);
-            gfx.DrawRect({screenX + width - 4, screenY + 6 - wingOffset, 4, 6}, bodyColor, true);
+        if (animalFilm && animalFilm->GetTotalFrames() >= 3) {
+            uint64_t now = engine::GetSystemTime();
+            uint64_t elapsed = now - spawnTime;
+            
+            int frame;
+            if (elapsed < 200) {
+//first 200ms: show spawn frame (frame 0)
+                frame = 0;
+            } else {
+//after spawn: alternate between frames 1 and 2 only (running animation)
+                frame = 1 + ((elapsed / 100) % 2);  //alternates between 1 and 2
+            }
+            
+//flip sprite based on movement direction
+//if moving left (velX < 0), flip horizontally (facing left)
+//if moving right (velX > 0), show normal sprite (facing right)
+            if (velX < 0) {
+                animalFilm->DisplayFrameFlipped({screenX, screenY}, static_cast<engine::byte>(frame));
+            } else {
+                animalFilm->DisplayFrame({screenX, screenY}, static_cast<engine::byte>(frame));
+            }
         } else {
-            // Ears
-            gfx.DrawRect({screenX + 2, screenY - 4 + wingOffset, 3, 6}, bodyColor, true);
-            gfx.DrawRect({screenX + width - 5, screenY - 4 - wingOffset, 3, 6}, bodyColor, true);
+//fallback: colored box based on type
+            engine::Color color = GetFallbackColor();
+            gfx.DrawRect({screenX, screenY, 16, 24}, color, true);
         }
-        
-        // Border
-        gfx.DrawRect({screenX, screenY, width, height}, engine::MakeColor(0, 0, 0), false);
+    }
+    
+private:
+    const char* GetFilmName() const {
+        switch (type) {
+            case AnimalType::Flicky: return "flicky";
+            case AnimalType::Pocky:  return "pocky";
+            case AnimalType::Cucky:  return "cucky";
+            case AnimalType::Pecky:  return "pecky";
+            case AnimalType::Rocky:  return "rocky";
+            case AnimalType::Picky:  return "picky";
+            case AnimalType::Ricky:  return "ricky";
+            default: return "flicky";
+        }
+    }
+    
+    engine::Color GetFallbackColor() const {
+        switch (type) {
+            case AnimalType::Flicky: return engine::MakeColor(0, 100, 255);  //blue bird
+            case AnimalType::Pocky:  return engine::MakeColor(210, 180, 140);  //tan rabbit
+            case AnimalType::Cucky:  return engine::MakeColor(255, 255, 0);  //yellow chicken
+            case AnimalType::Pecky:  return engine::MakeColor(100, 149, 237);  //blue penguin
+            case AnimalType::Rocky:  return engine::MakeColor(128, 128, 128);  //gray seal
+            case AnimalType::Picky:  return engine::MakeColor(255, 182, 193);  //pink pig
+            case AnimalType::Ricky:  return engine::MakeColor(139, 90, 43);  //brown squirrel
+            default: return engine::MakeColor(0, 100, 255);
+        }
     }
 };
 
 class AnimalManager {
-private:
     std::vector<Animal> animals;
+    int currentZone = 1;  //default to Green Hill Zone
+    engine::GridLayer* gridLayer = nullptr;
+    static constexpr size_t MAX_ANIMALS = 20;  //limit particle count for performance
     
 public:
-    void Spawn(float x, float y) {
-        // Random animal type
-        AnimalType type = static_cast<AnimalType>(std::rand() % 4);
+    AnimalManager() = default;
+    static AnimalManager& Instance() { static AnimalManager instance; return instance; }
+    
+    void SetGridLayer(engine::GridLayer* grid) { gridLayer = grid; }
+    void SetZone(int zone) { currentZone = zone; }
+    
+//get zone-appropriate animal type
+    AnimalType GetZoneAnimal() {
+        switch (currentZone) {
+            case 1:  //green Hill Zone
+                return (rand() % 2 == 0) ? AnimalType::Flicky : AnimalType::Pocky;
+            case 2:  //marble Zone
+                return (rand() % 2 == 0) ? AnimalType::Cucky : AnimalType::Ricky;
+            case 3:  //spring Yard Zone
+                return (rand() % 2 == 0) ? AnimalType::Ricky : AnimalType::Flicky;
+            case 4:  //labyrinth Zone
+                return (rand() % 2 == 0) ? AnimalType::Pecky : AnimalType::Rocky;
+            case 5:  //star Light Zone
+                return (rand() % 2 == 0) ? AnimalType::Flicky : AnimalType::Cucky;
+            case 6:  //scrap Brain Zone
+                return (rand() % 2 == 0) ? AnimalType::Picky : AnimalType::Ricky;
+            default:
+                return AnimalType::Flicky;
+        }
+    }
+    
+    void Spawn(float x, float y) { 
+        if (animals.size() >= MAX_ANIMALS) return;
+        animals.emplace_back(x, y, GetZoneAnimal());
+    }
+    
+    void SpawnAnimal(float x, float y) { Spawn(x, y); }
+    
+    void SpawnSpecific(float x, float y, AnimalType type) {
+        if (animals.size() >= MAX_ANIMALS) return;
         animals.emplace_back(x, y, type);
     }
     
     void Update() {
-        for (auto& animal : animals) {
-            animal.Update();
+        for (auto& a : animals) {
+            if (gridLayer) {
+                UpdateWithGrid(a);
+            } else {
+                a.Update();
+            }
         }
-        
-        // Remove inactive animals
-        animals.erase(
-            std::remove_if(animals.begin(), animals.end(),
-                [](const Animal& a) { return !a.isActive; }),
-            animals.end()
-        );
+//remove inactive animals
+        animals.erase(std::remove_if(animals.begin(), animals.end(),
+            [](const Animal& a) { return !a.active; }), animals.end());
     }
     
-    void Render(const engine::Rect& viewWindow) {
-        for (auto& animal : animals) {
-            animal.Render(viewWindow);
+    void UpdateWithGrid(Animal& a) {
+        if (!a.active) return;
+        
+        float dt = 1.0f / 60.0f;
+        
+//apply gravity
+        a.velY += Animal::GRAVITY * dt;
+        
+        float newX = a.x + a.velX * dt;
+        float newY = a.y + a.velY * dt;
+        
+//use a proper Rect for ground check (x, y, w, h)
+        engine::Rect feetBox = {static_cast<int>(newX), static_cast<int>(newY + 24), 16, 1};
+        if (gridLayer->IsOnSolidGround(feetBox)) {
+            if (a.velY > 0) {  //falling
+                a.bounceCount++;
+                if (a.bounceCount < Animal::MAX_BOUNCES) {
+                    a.velY = -a.velY * Animal::BOUNCE_DAMPENING;
+                    if (rand() % 2 == 0) a.velX = -a.velX;
+                } else {
+                    a.velY = 0;
+                    a.onGround = true;
+                }
+                newY = a.y;  //don't go through ground
+            }
+        }
+        
+        a.x = newX;
+        a.y = newY;
+        
+//deactivate after lifetime
+        if (engine::GetSystemTime() - a.spawnTime > Animal::LIFETIME_MS) {
+            a.active = false;
+        }
+    }
+    
+    void Render(const engine::Rect& viewWindow) { 
+        for (auto& a : animals) {
+            if (a.x >= viewWindow.x - 200 && a.x <= viewWindow.x + viewWindow.w + 200 &&
+                a.y >= viewWindow.y - 200 && a.y <= viewWindow.y + viewWindow.h + 200) {
+                a.Render(viewWindow);
+            }
         }
     }
     
     void Clear() { animals.clear(); }
+    size_t Count() const { return animals.size(); }
 };
 
-// Enemy manager
 class EnemyManager {
-private:
     std::vector<std::unique_ptr<Enemy>> enemies;
     engine::GridLayer* gridLayer = nullptr;
     std::function<void(int)> onEnemyKilled;
-    std::function<void(float, float)> onAnimalFreed;
     
-    // Store player position for enemies that need it
-    float playerX = 0;
-    float playerY = 0;
-
 public:
-    void SetGridLayer(engine::GridLayer* grid) { gridLayer = grid; }
-    void SetOnEnemyKilled(std::function<void(int)> callback) { onEnemyKilled = callback; }
-    void SetOnAnimalFreed(std::function<void(float, float)> callback) { onAnimalFreed = callback; }
-    
-    void AddMotobug(float x, float y) {
-        auto enemy = std::make_unique<Motobug>(x, y);
-        enemy->SetGridLayer(gridLayer);
-        enemy->SetOnDeath(onAnimalFreed);
-        enemies.push_back(std::move(enemy));
+    void SetGridLayer(engine::GridLayer* grid) {
+        gridLayer = grid;
+        for (auto& e : enemies) e->SetGridLayer(grid);
     }
     
-    void AddCrabmeat(float x, float y) {
-        auto enemy = std::make_unique<Crabmeat>(x, y);
-        enemy->SetGridLayer(gridLayer);
-        enemy->SetOnDeath(onAnimalFreed);
-        enemies.push_back(std::move(enemy));
+    void AddEnemy(std::unique_ptr<Enemy> e) {
+        if (gridLayer) e->SetGridLayer(gridLayer);
+        e->SetOnDeath([](float x, float y) { AnimalManager::Instance().Spawn(x, y); });
+        enemies.push_back(std::move(e));
     }
     
-    void AddBuzzBomber(float x, float y, float patrolRange = 200.0f) {
-        auto enemy = std::make_unique<BuzzBomber>(x, y, patrolRange);
-        enemy->SetGridLayer(gridLayer);
-        enemy->SetOnDeath(onAnimalFreed);
-        enemies.push_back(std::move(enemy));
-    }
+    void AddMotobug(float x, float y) { AddEnemy(std::make_unique<Motobug>(x, y)); }
+    void AddCrabmeat(float x, float y) { AddEnemy(std::make_unique<Crabmeat>(x, y)); }
+    void AddBuzzBomber(float x, float y) { AddEnemy(std::make_unique<BuzzBomber>(x, y)); }
+    void AddBuzzBomber(float x, float y, float /*range*/) { AddBuzzBomber(x, y);  }
+    void AddMasher(float x, float y) { AddEnemy(std::make_unique<Masher>(x, y)); }
+    void AddMasher(float x, float y, int /*interval*/) { AddMasher(x, y);  }
+    void AddBatbrain(float x, float y) { AddEnemy(std::make_unique<Batbrain>(x, y)); }
     
-    void AddMasher(float x, float y, uint64_t jumpCooldown = 2000) {
-        auto enemy = std::make_unique<Masher>(x, y, jumpCooldown);
-        enemy->SetGridLayer(gridLayer);
-        enemy->SetOnDeath(onAnimalFreed);
-        enemies.push_back(std::move(enemy));
-    }
+    void SetOnEnemyKilled(std::function<void(int)> cb) { onEnemyKilled = cb; }
+    void SetOnAnimalFreed(std::function<void(float, float)>) {}
     
-    // === NEW ENEMY TYPES ===
-    
-    void AddNewtronBlue(float x, float y) {
-        auto enemy = std::make_unique<NewtronBlue>(x, y);
-        enemy->SetGridLayer(gridLayer);
-        enemy->SetOnDeath(onAnimalFreed);
-        enemies.push_back(std::move(enemy));
-    }
-    
-    void AddNewtronGreen(float x, float y) {
-        auto enemy = std::make_unique<NewtronGreen>(x, y);
-        enemy->SetGridLayer(gridLayer);
-        enemy->SetOnDeath(onAnimalFreed);
-        enemies.push_back(std::move(enemy));
-    }
-    
-    void AddBomb(float x, float y) {
-        auto enemy = std::make_unique<Bomb>(x, y);
-        enemy->SetGridLayer(gridLayer);
-        enemy->SetOnDeath(onAnimalFreed);
-        enemies.push_back(std::move(enemy));
-    }
-    
-    void AddCaterkiller(float x, float y) {
-        auto enemy = std::make_unique<Caterkiller>(x, y);
-        enemy->SetGridLayer(gridLayer);
-        enemy->SetOnDeath(onAnimalFreed);
-        enemies.push_back(std::move(enemy));
-    }
-    
-    void AddBatbrain(float x, float y) {
-        auto enemy = std::make_unique<Batbrain>(x, y);
-        enemy->SetGridLayer(gridLayer);
-        enemy->SetOnDeath(onAnimalFreed);
-        enemies.push_back(std::move(enemy));
-    }
-    
-    void AddBurrobot(float x, float y) {
-        auto enemy = std::make_unique<Burrobot>(x, y);
-        enemy->SetGridLayer(gridLayer);
-        enemy->SetOnDeath(onAnimalFreed);
-        enemies.push_back(std::move(enemy));
-    }
-    
-    void AddRoller(float x, float y) {
-        auto enemy = std::make_unique<Roller>(x, y);
-        enemy->SetGridLayer(gridLayer);
-        enemy->SetOnDeath(onAnimalFreed);
-        enemies.push_back(std::move(enemy));
-    }
-    
-    void AddJaws(float x, float y) {
-        auto enemy = std::make_unique<Jaws>(x, y);
-        enemy->SetGridLayer(gridLayer);
-        enemy->SetOnDeath(onAnimalFreed);
-        enemies.push_back(std::move(enemy));
-    }
-    
-    void AddBallHog(float x, float y) {
-        auto enemy = std::make_unique<BallHog>(x, y);
-        enemy->SetGridLayer(gridLayer);
-        enemy->SetOnDeath(onAnimalFreed);
-        enemies.push_back(std::move(enemy));
-    }
-    
-    void AddOrbinaut(float x, float y) {
-        auto enemy = std::make_unique<Orbinaut>(x, y);
-        enemy->SetGridLayer(gridLayer);
-        enemy->SetOnDeath(onAnimalFreed);
-        enemies.push_back(std::move(enemy));
-    }
-    
-    void Update(float pX = 0, float pY = 0) {
-        playerX = pX;
-        playerY = pY;
-        
-        for (auto& enemy : enemies) {
-            // Update player position for enemies that track it
-            if (auto* crab = dynamic_cast<Crabmeat*>(enemy.get())) {
-                crab->SetPlayerPosition(playerX);
-            } else if (auto* buzz = dynamic_cast<BuzzBomber*>(enemy.get())) {
-                buzz->SetPlayerPosition(playerX, playerY);
-            } else if (auto* masher = dynamic_cast<Masher*>(enemy.get())) {
-                masher->SetPlayerPosition(playerX);
-            } else if (auto* newtronB = dynamic_cast<NewtronBlue*>(enemy.get())) {
-                newtronB->SetPlayerPosition(playerX, playerY);
-            } else if (auto* newtronG = dynamic_cast<NewtronGreen*>(enemy.get())) {
-                newtronG->SetPlayerPosition(playerX);
-            } else if (auto* bat = dynamic_cast<Batbrain*>(enemy.get())) {
-                bat->SetPlayerPosition(playerX);
-            } else if (auto* burro = dynamic_cast<Burrobot*>(enemy.get())) {
-                burro->SetPlayerPosition(playerX);
-            } else if (auto* roller = dynamic_cast<Roller*>(enemy.get())) {
-                roller->SetPlayerPosition(playerX);
-            } else if (auto* ballhog = dynamic_cast<BallHog*>(enemy.get())) {
-                ballhog->SetPlayerPosition(playerX);
-            }
-            enemy->Update();
-        }
-        
-        // Remove dead enemies
-        enemies.erase(
-            std::remove_if(enemies.begin(), enemies.end(),
-                [](const std::unique_ptr<Enemy>& e) { return e->IsDead(); }),
-            enemies.end()
-        );
-    }
-    
-    // Returns score if enemy killed, -1 if player damaged, 0 if no collision
-    // playerInBallState: true if jumping/rolling (kills enemies)
-    // playerCanKillOnContact: true if power-up invincibility (kills enemies on any contact)
-    // playerDamageImmune: true if any invincibility (post-hit or power-up, skips damage)
-    int CheckCollision(const engine::Rect& playerBox, bool playerInBallState, 
-                       bool playerCanKillOnContact, bool playerDamageImmune) {
-        for (auto& enemy : enemies) {
-            if (!enemy->IsActive()) continue;
-            
-            // Player can kill enemy (ball state or power-up invincibility)
-            if (playerInBallState || playerCanKillOnContact) {
-                if (enemy->CollidesWith(playerBox)) {
-                    int score = enemy->GetScore();
-                    enemy->Kill();
-                    if (onEnemyKilled) onEnemyKilled(score);
-                    return score;
+    void Update(float playerX, float playerY, const engine::Rect& viewWindow) {
+        for (auto& e : enemies) {
+            float ex = e->GetX();
+            float ey = e->GetY();
+            if (ex >= viewWindow.x - 300 && ex <= viewWindow.x + viewWindow.w + 300 &&
+                ey >= viewWindow.y - 300 && ey <= viewWindow.y + viewWindow.h + 300) {
+                e->SetPlayerPosition(playerX, playerY);
+//pass screen bounds to BuzzBombers for off-screen detection
+                if (auto* buzz = dynamic_cast<BuzzBomber*>(e.get())) {
+                    buzz->SetScreenBounds(
+                        static_cast<float>(viewWindow.x),
+                        static_cast<float>(viewWindow.y),
+                        static_cast<float>(viewWindow.x + viewWindow.w),
+                        static_cast<float>(viewWindow.y + viewWindow.h)
+                    );
                 }
-            }
-            // Player has damage immunity (post-hit invincibility) - no kill, no damage
-            else if (playerDamageImmune) {
-                // Just pass through, no interaction
-                continue;
-            }
-            // Enemy damages player (normal collision, no protection)
-            else if (enemy->DamagesPlayer(playerBox, playerInBallState)) {
-                return -1;
+                e->Update();
             }
         }
-        return 0;
+        ProjectileManager::Instance().Update();
+        enemies.erase(std::remove_if(enemies.begin(), enemies.end(),
+            [](const std::unique_ptr<Enemy>& e) { return e->IsDead(); }), enemies.end());
+    }
+    
+//overload for backward compatibility
+    void Update(float playerX, float playerY) {
+        engine::Rect defaultView = {0, 0, 320, 224};
+        Update(playerX, playerY, defaultView);
     }
     
     void Render(const engine::Rect& viewWindow) {
-        for (auto& enemy : enemies) {
-            enemy->Render(viewWindow);
+        for (auto& e : enemies) {
+            float ex = e->GetX();
+            float ey = e->GetY();
+            if (ex >= viewWindow.x - 200 && ex <= viewWindow.x + viewWindow.w + 200 &&
+                ey >= viewWindow.y - 200 && ey <= viewWindow.y + viewWindow.h + 200) {
+                e->Render(viewWindow);
+            }
         }
+        ProjectileManager::Instance().Render(viewWindow);
     }
     
-    void Clear() { enemies.clear(); }
-    int GetCount() const { return static_cast<int>(enemies.size()); }
+    int CheckCollision(const engine::Rect& playerBox, bool canKillInBall, bool canKillOnContact, bool damageImmune) {
+        bool canKill = canKillInBall || canKillOnContact;
+        for (auto& e : enemies) {
+            if (!e->IsActive()) continue;
+            if (e->CollidesWith(playerBox)) {
+                if (canKill) {
+                    int score = e->GetScore();
+                    e->Kill();
+                    if (onEnemyKilled) onEnemyKilled(score);
+                    return score;
+                } else if (!damageImmune) {
+                    return -1;
+                }
+            }
+        }
+        if (!damageImmune && ProjectileManager::Instance().CheckPlayerCollision(playerBox)) return -1;
+        return 0;
+    }
+    
+    bool CheckPlayerAttack(const engine::Rect& playerBox, bool playerInBallState, int& score) {
+        for (auto& e : enemies) {
+            if (e->CanBeDamagedBy(playerBox, playerInBallState)) {
+                score = e->GetScore();
+                e->Kill();
+                if (onEnemyKilled) onEnemyKilled(score);
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    bool CheckPlayerHurt(const engine::Rect& playerBox, bool playerInBallState) {
+        for (auto& e : enemies) {
+            if (e->DamagesPlayer(playerBox, playerInBallState)) return true;
+        }
+        return ProjectileManager::Instance().CheckPlayerCollision(playerBox);
+    }
+    
+    void Clear() { enemies.clear(); ProjectileManager::Instance().Clear(); }
+    size_t GetEnemyCount() const { return enemies.size(); }
 };
 
-} // namespace app
+}  //namespace app
 
-#endif // ENEMY_HPP
+#endif  //ENEMY_HPP

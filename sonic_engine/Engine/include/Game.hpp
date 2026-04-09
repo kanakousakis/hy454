@@ -22,7 +22,7 @@ private:
     Action userCode;
     Predicate isDone;
     
-    // Pause system
+//pause system
     Action onPauseResume;
     bool paused = false;
     timestamp_t pauseTime = 0;
@@ -35,7 +35,7 @@ private:
 public:
     static Game& Instance();
     
-    // Setters
+//setters
     void SetRender(const Action& f) { render = f; }
     void SetProgressAnimations(const Action& f) { progressAnimations = f; }
     void SetInput(const Action& f) { input = f; }
@@ -47,7 +47,7 @@ public:
     void SetDone(const Predicate& f) { isDone = f; }
     void SetOnPauseResume(const Action& f) { onPauseResume = f; }
     
-    // Actions
+//actions
     void Render() { Invoke(render); }
     void ProgressAnimations() { Invoke(progressAnimations); }
     void Input() { Invoke(input); }
@@ -57,12 +57,12 @@ public:
     void CommitDestructions() { Invoke(destruct); }
     void UserCode() { Invoke(userCode); }
     
-    // State
+//state
     bool IsFinished() const { return isDone && isDone(); }
     bool IsPaused() const { return paused; }
     timestamp_t GetPauseTime() const { return pauseTime; }
     
-    // Pause/Resume
+//pause/Resume
     void Pause(timestamp_t t) {
         if (!paused) {
             paused = true;
@@ -84,12 +84,15 @@ public:
         else Pause(GetSystemTime());
     }
     
-    // Main loop
+//main loop
     void MainLoop();
     void MainLoopIteration();
 };
 
-// Convenience function
+//convenience function
 inline Game& GetGame() { return Game::Instance(); }
 
-} // namespace engine
+//debug function to enable freeze debugging
+void EnableFreezeDebug();
+
+}  //namespace engine

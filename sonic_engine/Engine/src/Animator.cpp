@@ -5,7 +5,7 @@ namespace engine {
 
 AnimatorManager* AnimatorManager::instance = nullptr;
 
-// ============ Animator Base ============
+//============ Animator Base ============
 
 Animator::Animator() {
     AnimatorManager::Instance().Register(this);
@@ -36,7 +36,7 @@ void Animator::NotifyAction(const Animation& anim) {
     if (onAction) onAction(this, anim);
 }
 
-// ============ MovingAnimator ============
+//============ MovingAnimator ============
 
 void MovingAnimator::Start(MovingAnimation* a, timestamp_t t) {
     anim = a;
@@ -59,7 +59,7 @@ void MovingAnimator::Progress(timestamp_t currTime) {
     }
 }
 
-// ============ FrameRangeAnimator ============
+//============ FrameRangeAnimator ============
 
 void FrameRangeAnimator::Start(FrameRangeAnimation* a, timestamp_t t) {
     anim = a;
@@ -68,12 +68,12 @@ void FrameRangeAnimator::Start(FrameRangeAnimation* a, timestamp_t t) {
     currRep = 0;
     state = AnimatorState::Running;
     NotifyStarted();
-    NotifyAction(*anim);  // Apply first frame immediately
+    NotifyAction(*anim);  //apply first frame immediately
 }
 
 void FrameRangeAnimator::Progress(timestamp_t currTime) {
     while (currTime > lastTime && (currTime - lastTime) >= anim->GetDelay()) {
-        // Advance frame
+//advance frame
         if (currFrame == anim->GetEndFrame()) {
             currFrame = anim->GetStartFrame();
         } else {
@@ -83,7 +83,7 @@ void FrameRangeAnimator::Progress(timestamp_t currTime) {
         lastTime += anim->GetDelay();
         NotifyAction(*anim);
         
-        // Check if completed a full cycle
+//check if completed a full cycle
         if (currFrame == anim->GetEndFrame()) {
             if (!anim->IsForever() && ++currRep == anim->GetReps()) {
                 state = AnimatorState::Finished;
@@ -94,7 +94,7 @@ void FrameRangeAnimator::Progress(timestamp_t currTime) {
     }
 }
 
-// ============ FrameListAnimator ============
+//============ FrameListAnimator ============
 
 void FrameListAnimator::Start(FrameListAnimation* a, timestamp_t t) {
     anim = a;
@@ -131,7 +131,7 @@ unsigned FrameListAnimator::GetCurrFrame() const {
     return anim->GetFrames()[currIndex];
 }
 
-// ============ FlashAnimator ============
+//============ FlashAnimator ============
 
 void FlashAnimator::Start(FlashAnimation* a, timestamp_t t) {
     anim = a;
@@ -160,7 +160,7 @@ void FlashAnimator::Progress(timestamp_t currTime) {
     }
 }
 
-// ============ TickAnimator ============
+//============ TickAnimator ============
 
 void TickAnimator::Start(TickAnimation* a, timestamp_t t) {
     anim = a;
@@ -185,13 +185,13 @@ void TickAnimator::Progress(timestamp_t currTime) {
             }
         }
     } else {
-        // Continuous - called every frame
+//continuous - called every frame
         elapsedTime = currTime - lastTime;
         NotifyAction(*anim);
     }
 }
 
-// ============ AnimatorManager ============
+//============ AnimatorManager ============
 
 AnimatorManager& AnimatorManager::Instance() {
     if (!instance) {
@@ -220,7 +220,7 @@ void AnimatorManager::MarkAsSuspended(Animator* a) {
 }
 
 void AnimatorManager::Progress(timestamp_t currTime) {
-    auto copy = running;  // Copy to avoid iterator invalidation
+    auto copy = running;  //copy to avoid iterator invalidation
     for (auto* a : copy) {
         if (a->IsRunning()) {
             a->Progress(currTime);
@@ -234,4 +234,4 @@ void AnimatorManager::TimeShift(timestamp_t dt) {
     }
 }
 
-} // namespace engine
+}  //namespace engine

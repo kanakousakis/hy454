@@ -18,4 +18,4 @@ void LatelyDestroyable::Destroy() {
     }
 }
 
-} // namespace engine
+}  //namespace engine

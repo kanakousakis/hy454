@@ -34,7 +34,12 @@ target_include_directories(SonicEngineLib PUBLIC Engine/include)
 target_link_libraries(SonicEngineLib PUBLIC sfml-graphics sfml-window sfml-system)
 
 # Create executable
-add_executable(SonicGame App/src/main.cpp)
+add_executable(SonicGame 
+    App/src/main.cpp
+    App/src/SonicPlayer.cpp
+    App/src/TunnelSystem.cpp
+)
+target_include_directories(SonicGame PRIVATE App/include)
 target_link_libraries(SonicGame PRIVATE SonicEngineLib)
 
 # Output directories

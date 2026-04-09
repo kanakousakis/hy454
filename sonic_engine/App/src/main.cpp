@@ -8,22 +8,25 @@
 #include "TileMapLoader.hpp"
 #include "SpriteSheetConfig.hpp"
 #include "ResourceManager.hpp"
+#include "SoundManager.hpp"
+#include "WhirlCircle.hpp"
 #include <iostream>
 #include <cmath>
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <algorithm>
 
 using namespace engine;
 using namespace app;
 
-// Helper function to find asset path - handles running from project root OR bin/ directory
+//helper function to find asset path - handles running from project root OR bin/ directory
 std::string FindAssetPath() {
     std::vector<std::string> possiblePaths = {
-        "assets/",           // Running from project root (./bin/SonicGame)
-        "../assets/",        // Running from bin/ directory (./SonicGame)
-        "./assets/",         // Explicit current directory
-        "sonic_engine/assets/"  // Running from parent of project
+        "assets/",  //running from project root (./bin/SonicGame)
+        "../assets/",  //running from bin/ directory (./SonicGame)
+        "./assets/",  //explicit current directory
+        "sonic_engine/assets/"  //running from parent of project
     };
     
     for (const auto& path : possiblePaths) {
@@ -33,21 +36,35 @@ std::string FindAssetPath() {
             return path;
         }
     }
-    return "assets/";  // Fallback to default
+    return "assets/";  //fallback to default
 }
 
-// Global asset path - detected once at startup
+//global asset path - detected once at startup
 std::string g_assetPath;
 
-// Forward declarations
+//forward declarations
 void ResetLevel();
 const char* StateToString(SonicState state);
 
-// Screen constants
-constexpr Dim SCREEN_WIDTH = 640;
-constexpr Dim SCREEN_HEIGHT = 480;
+//frustum culling helper - check if object is near view
+inline bool IsNearView(float x, float y, const Rect& view, int margin = 200) {
+    return x >= view.x - margin && x <= view.x + view.w + margin &&
+           y >= view.y - margin && y <= view.y + view.h + margin;
+}
 
-// Game state
+//screen constants - Genesis native resolution scaled 2x
+//virtual: 320x224 (Sega Genesis native)
+//window: 640x448 (2x scale)
+constexpr Dim WINDOW_WIDTH = 640;
+constexpr Dim WINDOW_HEIGHT = 448;
+constexpr Dim VIRTUAL_WIDTH = 320;
+constexpr Dim VIRTUAL_HEIGHT = 224;
+constexpr Dim SCREEN_WIDTH = VIRTUAL_WIDTH;
+constexpr Dim SCREEN_HEIGHT = VIRTUAL_HEIGHT;
+//sprites rendered 1:1 at virtual resolution
+constexpr float SPRITE_SCALE = 1.0f;
+
+//game state
 enum class GameScreen {
     Title,
     Playing,
@@ -56,138 +73,191 @@ enum class GameScreen {
 
 GameScreen currentScreen = GameScreen::Title;
 bool gameRunning = true;
+uint64_t gameOverStartTime = 0;  //when game over screen appeared (for input delay)
 bool gamePaused = false;
 bool showGrid = false;
 bool showDebug = true;
 bool assetsLoaded = false;
 
-// Menu state
-int pauseMenuSelection = 0;  // 0=Continue, 1=Restart, 2=Quit
-constexpr int PAUSE_MENU_ITEMS = 3;
+//god mode cheat - hold G for 5 seconds
+uint64_t gKeyHoldStart = 0;
+bool godModeActive = false;
+constexpr uint64_t GOD_MODE_HOLD_TIME = 5000;  //5 seconds
 
-// Scroll multiplication factor (PDF Step 1 requirement)
-// PDF: "default value 0.5"
+//kill/respawn cheat - hold K for 3 seconds
+uint64_t kKeyHoldStart = 0;
+constexpr uint64_t KILL_HOLD_TIME = 3000;  //3 seconds
+
+//menu state
+int pauseMenuSelection = 0;  //0=Continue, 1=Restart, 2=Quit
+constexpr int PAUSE_MENU_ITEMS = 3;
+uint64_t lastMenuClickTime = 0;  //for double-click detection
+
+//title screen menu
+int titleMenuSelection = 0;  //0=Start, 1=Sound Toggle
+bool soundEnabled = true;  //sound on/off toggle
+
 const float SCROLL_FACTORS[] = {0.5f, 1.0f, 1.5f, 2.0f};
-int scrollFactorIndex = 0;  // Default 0.5f per PDF
+int scrollFactorIndex = 0;
 constexpr int NUM_SCROLL_FACTORS = 4;
 
-// Invincibility sparkle state
+//invincibility sparkle state - lighter, smoother effect
 struct SparkleEffect {
     float angle = 0.0f;
-    float radius = 35.0f;
+    float radius = 40.0f;  //sparkle orbit radius
     int numSparkles = 4;
     uint64_t lastUpdate = 0;
+    float alpha = 0.7f;  //transparency for smoother look
 } sparkleEffect;
 
-// Shield flicker state
-bool shieldVisible = true;
-uint64_t lastShieldFlicker = 0;
+uint64_t deathStartTime = 0;  //death animation timing (global to properly reset)
 
-// Terrain
+//terrain
 TileLayer* actionLayer = nullptr;
 GridLayer* gridLayer = nullptr;
 
-// Player
+//player
 SonicPlayer* sonic = nullptr;
 
-// Game objects
+//game objects
 RingManager ringManager;
 EnemyManager enemyManager;
-AnimalManager animalManager;
 SpringManager springManager;
 SpikeManager spikeManager;
 CheckpointManager checkpointManager;
 MonitorManager monitorManager;
+FlowerManager flowerManager;
+BigRingManager bigRingManager;
+whirl::WhirlCircleManager whirlCircleManager;
 
-// Background
+//level complete state
+bool levelComplete = false;
+uint64_t levelCompleteTime = 0;
+int levelCompleteSelection = 0;  //0 = Restart, 1 = Last Checkpoint
+
+//background
 ParallaxManager parallaxManager;
 
-// HUD
+//HUD
 HUD gameHUD;
 
-// View window (follows player)
+//view window (follows player)
 Rect viewWindow = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
 
-// Sprite animation state
+//sprite animation state
 int sonicFrame = 0;
 uint64_t lastFrameTime = 0;
 std::string currentAnim = "sonic_idle";
 
-// Forward declare object placement
-void PlaceGameObjects();
+//forward declare object placement and ground finder
+void PlaceGameObjects(bool includeMonitorsAndLevelObjects = true);
+int FindGroundY(int pixelX);
 
-// Reset level to initial state (PDF: collectibles and objects should reset)
+//new terrain constants (39×6 tiles at 256×256 = 9984×1536 pixels)
+constexpr int MAP_WIDTH = 9984;  //39 tiles × 256
+constexpr int MAP_HEIGHT = 1536;  //6 tiles × 256
+
 void ResetLevel() {
-    // Reset HUD
-    gameHUD.lives = 3;
+    std::cout << "=== RESETTING LEVEL ===" << std::endl;
+    
+//reset HUD (not lives - that's in Sonic)
     gameHUD.score = 0;
     gameHUD.rings = 0;
     gameHUD.StartLevel(GetSystemTime());
     
-    // Reset Sonic
+//reset Sonic completely first
     if (sonic) {
-        sonic->Respawn(150.0f, 1600.0f);
-        sonic->Reset();  // Reset rings, lives, state
+        sonic->Reset();  //full reset: lives=3, rings=0, state=Idle, NO invincibility
+//spawn above ground at X=100 (ground at Y≈1216, spawn above it)
+        sonic->SetPosition(100.0f, 1100.0f);
     }
     
-    // Clear and re-place all game objects
+//clear all game objects
     ringManager.Clear();
     enemyManager.Clear();
-    animalManager.Clear();
+    AnimalManager::Instance().Clear();
     springManager.Clear();
     spikeManager.Clear();
     checkpointManager.Clear();
     monitorManager.Clear();
+    flowerManager.Clear();
+    bigRingManager.Clear();
     
-    // Re-place all objects
+//reset level complete state
+    levelComplete = false;
+    levelCompleteTime = 0;
+    levelCompleteSelection = 0;
+    
+//reset death timer
+    deathStartTime = 0;
+    
+//re-place all objects
     PlaceGameObjects();
     
-    std::cout << "Level reset!" << std::endl;
+    std::cout << "=== LEVEL RESET COMPLETE ===" << std::endl;
 }
 
 void UpdateViewWindow() {
-    if (!actionLayer || !sonic) return;
-    
+    if (!sonic || !gridLayer) return;
+
+//camera centers on Sonic horizontally, positions Sonic in lower part of screen
+//this shows more of the terrain above (palm trees, etc.)
     int targetX = sonic->GetIntX() - SCREEN_WIDTH / 2;
-    int targetY = sonic->GetIntY() - SCREEN_HEIGHT / 2;
-    
-    int maxX = actionLayer->GetPixelWidth() - SCREEN_WIDTH;
-    int maxY = actionLayer->GetPixelHeight() - SCREEN_HEIGHT;
-    
-    if (maxX < 0) maxX = 0;
-    if (maxY < 0) maxY = 0;
-    
-    viewWindow.x = std::max(0, std::min(targetX, maxX));
-    viewWindow.y = std::max(0, std::min(targetY, maxY));
-    
-    actionLayer->SetViewWindow(viewWindow);
+    int targetY = sonic->GetIntY() - (SCREEN_HEIGHT * 3 / 4);  //changed from 2/3 to 3/4 - shows more above
+
+//clamp to actual map bounds - no artificial limits
+    if (targetX < 0) targetX = 0;
+    if (targetX > MAP_WIDTH - SCREEN_WIDTH) targetX = MAP_WIDTH - SCREEN_WIDTH;
+    if (targetY < 0) targetY = 0;
+    if (targetY > MAP_HEIGHT - SCREEN_HEIGHT) targetY = MAP_HEIGHT - SCREEN_HEIGHT;
+
+    viewWindow.x = targetX;
+    viewWindow.y = targetY;
+    viewWindow.w = SCREEN_WIDTH;
+    viewWindow.h = SCREEN_HEIGHT;
+
+    if (actionLayer) {
+        actionLayer->SetViewWindow(viewWindow);
+    }
+
+//update sound system
+    SoundManager::Instance().Update();
 }
 
 void HandleInput() {
     auto& input = GetInput();
     input.Poll();
     
-    // Title screen input
+//title screen input with menu navigation
     if (currentScreen == GameScreen::Title) {
-        if (input.IsKeyJustPressed(KeyCode::Enter)) {
-            currentScreen = GameScreen::Playing;
-            // Start the level timer when transitioning to gameplay
-            gameHUD.StartLevel(GetSystemTime());
+//navigate menu with Up/Down
+        if (input.IsKeyJustPressed(KeyCode::Up)) {
+            titleMenuSelection = (titleMenuSelection - 1 + 2) % 2;
         }
-        if (input.IsKeyJustPressed(KeyCode::Q) || input.IsWindowClosed()) {
-            gameRunning = false;
+        if (input.IsKeyJustPressed(KeyCode::Down)) {
+            titleMenuSelection = (titleMenuSelection + 1) % 2;
         }
-        input.Update();
-        return;
-    }
-    
-    // Game Over screen input
-    if (currentScreen == GameScreen::GameOver) {
+        
+//select with Enter/Space
         if (input.IsKeyJustPressed(KeyCode::Enter) || input.IsKeyJustPressed(KeyCode::Space)) {
-            // Restart game
-            currentScreen = GameScreen::Playing;
-            ResetLevel();
+            if (titleMenuSelection == 0) {
+//start Game
+                currentScreen = GameScreen::Playing;
+                gameHUD.StartLevel(GetSystemTime());
+            } else if (titleMenuSelection == 1) {
+//toggle Sound
+                soundEnabled = !soundEnabled;
+                SoundManager::Instance().EnableMusic(soundEnabled);
+                SoundManager::Instance().EnableSound(soundEnabled);
+//immediately stop or restart music
+                if (!soundEnabled) {
+                    SoundManager::Instance().StopMusic();
+                } else {
+                    SoundManager::Instance().PlayMusic(MusicTrack::GreenHillZone);
+                }
+            }
         }
+        
         if (input.IsKeyJustPressed(KeyCode::Q) || input.IsWindowClosed()) {
             gameRunning = false;
         }
@@ -195,19 +265,108 @@ void HandleInput() {
         return;
     }
     
-    // Normal gameplay input
+//game Over screen input
+    if (currentScreen == GameScreen::GameOver) {
+//IMPORTANT: Require 1 second delay before accepting input
+//this prevents accidental restarts from held keys during death
+        uint64_t now = GetSystemTime();
+        bool inputAllowed = (gameOverStartTime > 0 && now - gameOverStartTime > 1000);
+        
+        if (inputAllowed) {
+            if (input.IsKeyJustPressed(KeyCode::Enter) || input.IsKeyJustPressed(KeyCode::Space)) {
+//restart game
+                std::cout << "=== RESTARTING GAME (player input) ===" << std::endl;
+                currentScreen = GameScreen::Playing;
+                gameOverStartTime = 0;  //reset for next game over
+                ResetLevel();
+            }
+            if (input.IsKeyJustPressed(KeyCode::Q) || input.IsWindowClosed()) {
+                gameRunning = false;
+            }
+        }
+        input.Update();
+        return;
+    }
+    
+//normal gameplay input
     if (input.IsKeyJustPressed(KeyCode::Escape)) {
         if (gamePaused) {
-            // If paused, ESC resumes
+//if paused, ESC resumes
             GetGame().Resume();
+            SoundManager::Instance().ResumeMusic();
             pauseMenuSelection = 0;
         } else {
             GetGame().Pause(GetSystemTime());
+            SoundManager::Instance().PauseMusic();
         }
     }
-    
-    // Pause menu navigation
+
+//M key to toggle music on/off
+    if (input.IsKeyJustPressed(KeyCode::M)) {
+        soundEnabled = !soundEnabled;
+        SoundManager::Instance().EnableMusic(soundEnabled);
+        SoundManager::Instance().EnableSound(soundEnabled);
+        if (!soundEnabled) {
+            SoundManager::Instance().StopMusic();
+        } else {
+            if (!gamePaused && currentScreen == GameScreen::Playing) {
+                SoundManager::Instance().PlayMusic(MusicTrack::GreenHillZone);
+            }
+        }
+    }
+
+//pause menu navigation
     if (gamePaused) {
+//mouse selection - convert window coords to virtual coords
+        Point mousePos = input.GetMousePosition();
+//scale mouse position from window (640x448) to virtual (320x224)
+        int virtualMouseX = mousePos.x / 2;
+        int virtualMouseY = mousePos.y / 2;
+        
+//menu positions (must match RenderPauseMenu)
+        int menuX = 60;
+        int menuY = 30;
+        int itemY = menuY + 40;
+        
+//check if mouse is hovering over any menu item
+        for (int i = 0; i < PAUSE_MENU_ITEMS; ++i) {
+            int itemLeft = menuX + 30;
+            int itemRight = menuX + 170;
+            int itemTop = itemY + i * 28;
+            int itemBottom = itemTop + 22;
+            
+            if (virtualMouseX >= itemLeft && virtualMouseX <= itemRight &&
+                virtualMouseY >= itemTop && virtualMouseY <= itemBottom) {
+                pauseMenuSelection = i;  //hover selects
+                
+//click or double-click to confirm
+                if (input.IsMouseJustPressed(MouseButton::Left)) {
+                    uint64_t now = GetSystemTime();
+                    bool isDoubleClick = (now - lastMenuClickTime < 400);  //400ms window
+                    lastMenuClickTime = now;
+                    
+                    if (isDoubleClick) {
+//double-click confirms immediately
+                        switch (pauseMenuSelection) {
+                            case 0:
+                                GetGame().Resume();
+                                SoundManager::Instance().ResumeMusic();
+                                pauseMenuSelection = 0;
+                                break;
+                            case 1:
+                                GetGame().Resume();
+                                SoundManager::Instance().ResumeMusic();
+                                pauseMenuSelection = 0;
+                                ResetLevel();
+                                break;
+                            case 2: gameRunning = false; break;
+                        }
+                    }
+                }
+            }
+        }
+        
+//keyboard navigation (still works)
         if (input.IsKeyJustPressed(KeyCode::Up) || input.IsKeyJustPressed(KeyCode::W)) {
             pauseMenuSelection--;
             if (pauseMenuSelection < 0) pauseMenuSelection = PAUSE_MENU_ITEMS - 1;
@@ -218,16 +377,18 @@ void HandleInput() {
         }
         if (input.IsKeyJustPressed(KeyCode::Enter)) {
             switch (pauseMenuSelection) {
-                case 0:  // Continue
+                case 0:  //continue
                     GetGame().Resume();
+                    SoundManager::Instance().ResumeMusic();
                     pauseMenuSelection = 0;
                     break;
-                case 1:  // Restart
+                case 1:  //restart
                     GetGame().Resume();
+                    SoundManager::Instance().ResumeMusic();
                     pauseMenuSelection = 0;
                     ResetLevel();
                     break;
-                case 2:  // Quit
+                case 2:  //quit
                     gameRunning = false;
                     break;
             }
@@ -236,41 +397,166 @@ void HandleInput() {
         return;
     }
     
-    if (input.IsKeyJustPressed(KeyCode::Q) || input.IsWindowClosed()) {
+//level complete menu navigation
+    if (levelComplete) {
+        if (input.IsKeyJustPressed(KeyCode::Up) || input.IsKeyJustPressed(KeyCode::W)) {
+            levelCompleteSelection--;
+            if (levelCompleteSelection < 0) levelCompleteSelection = 1;
+        }
+        if (input.IsKeyJustPressed(KeyCode::Down) || input.IsKeyJustPressed(KeyCode::S)) {
+            levelCompleteSelection++;
+            if (levelCompleteSelection > 1) levelCompleteSelection = 0;
+        }
+        if (input.IsKeyJustPressed(KeyCode::Enter)) {
+            switch (levelCompleteSelection) {
+                case 0:  //restart Level
+                    ResetLevel();
+                    break;
+                case 1:  //last Checkpoint
+                    levelComplete = false;
+                    if (sonic) {
+                        float spawnX, spawnY;
+                        checkpointManager.GetRespawnPosition(spawnX, spawnY);
+                        sonic->SetPosition(spawnX, spawnY);
+                        sonic->Reset();  //reset to idle state
+                    }
+                    break;
+            }
+        }
+        input.Update();
+        return;
+    }
+    
+//q to quit - only works when NOT in active gameplay OR when holding for 0.5 seconds
+//this prevents accidental Q presses during intense gameplay
+    static uint64_t qPressStartTime = 0;
+    static const uint64_t HOLD_TO_QUIT_DURATION = 500;  //0.5 seconds
+    
+    if (input.IsKeyPressed(KeyCode::Q)) {
+        if (qPressStartTime == 0) {
+            qPressStartTime = GetSystemTime();
+        }
+        uint64_t heldDuration = GetSystemTime() - qPressStartTime;
+        if (heldDuration >= HOLD_TO_QUIT_DURATION) {
+            std::cout << "=== QUIT: Q held for " << heldDuration << "ms ===" << std::endl;
+            gameRunning = false;
+        }
+    } else {
+        qPressStartTime = 0;  //reset when Q released
+    }
+    
+    if (input.IsWindowClosed()) {
+        std::cout << "=== QUIT: Window closed ===" << std::endl;
         gameRunning = false;
     }
-    if (input.IsKeyJustPressed(KeyCode::G)) {
-        showGrid = !showGrid;
-        std::cout << "Grid overlay: " << (showGrid ? "ON" : "OFF") << std::endl;
+    
+//g key: tap for grid toggle, hold 5 seconds for god mode
+    if (input.IsKeyPressed(KeyCode::G)) {
+        uint64_t now = engine::GetSystemTime();
+        if (gKeyHoldStart == 0) {
+            gKeyHoldStart = now;
+        } else if (!godModeActive && (now - gKeyHoldStart >= GOD_MODE_HOLD_TIME)) {
+//held for 5 seconds - toggle god mode
+            godModeActive = !godModeActive;
+            if (sonic) {
+                sonic->SetGodMode(godModeActive);
+            }
+            gKeyHoldStart = now + 10000;  //prevent immediate re-trigger
+        }
+    } else {
+//g key released
+        if (gKeyHoldStart != 0) {
+            uint64_t holdTime = engine::GetSystemTime() - gKeyHoldStart;
+            if (holdTime < 500) {  //quick tap (less than 500ms) = grid toggle
+                showGrid = !showGrid;
+                std::cout << "Grid overlay: " << (showGrid ? "ON" : "OFF") << std::endl;
+            }
+            gKeyHoldStart = 0;
+        }
     }
+    
     if (input.IsKeyJustPressed(KeyCode::F1)) {
         showDebug = !showDebug;
         std::cout << "Debug panel: " << (showDebug ? "ON" : "OFF") << std::endl;
     }
     
-    // Scroll multiplication factor controls (PDF Step 1)
-    // + key: next factor (looped: 2.0 -> 0.5)
+//k key: hold for 3 seconds to kill and respawn at checkpoint (works even in god mode)
+    if (input.IsKeyPressed(KeyCode::K)) {
+        uint64_t now = engine::GetSystemTime();
+        if (kKeyHoldStart == 0) {
+            kKeyHoldStart = now;
+        } else if ((now - kKeyHoldStart >= KILL_HOLD_TIME)) {
+//held for 3 seconds - kill and respawn
+            if (sonic && !sonic->IsDead()) {
+//force death and respawn
+                bool wasGodMode = godModeActive;
+                godModeActive = false;
+                if (sonic) sonic->SetGodMode(false);
+                
+//respawn at checkpoint
+                float respawnX, respawnY;
+                checkpointManager.GetRespawnPosition(respawnX, respawnY);
+                sonic->SetPosition(respawnX, respawnY - 50);
+                sonic->Reset();
+                sonic->LoseLife();  //lose a life
+                
+//restore god mode if it was active
+                godModeActive = wasGodMode;
+                if (sonic) sonic->SetGodMode(godModeActive);
+                
+                kKeyHoldStart = now + 5000;  //prevent immediate re-trigger
+            }
+        }
+    } else {
+        kKeyHoldStart = 0;
+    }
+    
+//t key: hold for 2 seconds to teleport to tunnel test location
+    static uint64_t tKeyHoldStart = 0;
+    static constexpr uint64_t TELEPORT_HOLD_TIME = 2000;  //2 seconds
+    if (input.IsKeyPressed(KeyCode::T)) {
+        uint64_t now = engine::GetSystemTime();
+        if (tKeyHoldStart == 0) {
+            tKeyHoldStart = now;
+        } else if ((now - tKeyHoldStart >= TELEPORT_HOLD_TIME)) {
+//held for 2 seconds - teleport to tunnel
+            if (sonic) {
+                sonic->SetPosition(5825.0f, 904.0f);
+                std::cout << "=== TELEPORTED TO TUNNEL TEST (5825, 904) ===" << std::endl;
+                tKeyHoldStart = now + 3000;  //prevent immediate re-trigger
+            }
+        }
+    } else {
+        tKeyHoldStart = 0;
+    }
+    
+    if (input.IsKeyJustPressed(KeyCode::F11)) {
+        GetGraphics().ToggleFullscreen();
+        std::cout << "Fullscreen: " << (GetGraphics().IsFullscreen() ? "ON" : "OFF") << std::endl;
+    }
+    
+//+ key: next factor (looped: 2.0 -> 0.5)
     if (input.IsKeyJustPressed(KeyCode::Plus) || input.IsKeyJustPressed(KeyCode::Equals)) {
         scrollFactorIndex = (scrollFactorIndex + 1) % NUM_SCROLL_FACTORS;
         std::cout << "Scroll factor: " << SCROLL_FACTORS[scrollFactorIndex] << std::endl;
     }
-    // - key: previous factor (looped: 0.5 -> 2.0)
+//- key: previous factor (looped: 0.5 -> 2.0)
     if (input.IsKeyJustPressed(KeyCode::Minus)) {
         scrollFactorIndex = (scrollFactorIndex - 1 + NUM_SCROLL_FACTORS) % NUM_SCROLL_FACTORS;
         std::cout << "Scroll factor: " << SCROLL_FACTORS[scrollFactorIndex] << std::endl;
     }
-    // 0 key: reset to default (0.5)
+//0 key: reset to default (0.5)
     if (input.IsKeyJustPressed(KeyCode::Num0)) {
-        scrollFactorIndex = 0;  // 0.5f
+        scrollFactorIndex = 0;  //0.5f
         std::cout << "Scroll factor reset to: " << SCROLL_FACTORS[scrollFactorIndex] << std::endl;
     }
-    // Home key: scroll to top-left
+//home key: scroll to top-left
     if (input.IsKeyJustPressed(KeyCode::Home)) {
         viewWindow.x = 0;
         viewWindow.y = 0;
         std::cout << "View: top-left" << std::endl;
     }
-    // End key: scroll to bottom-right
+//end key: scroll to bottom-right
     if (input.IsKeyJustPressed(KeyCode::End)) {
         if (actionLayer) {
             viewWindow.x = actionLayer->GetPixelWidth() - SCREEN_WIDTH;
@@ -286,15 +572,15 @@ void HandleInput() {
         bool right = input.IsKeyPressed(KeyCode::Right) || input.IsKeyPressed(KeyCode::D);
         bool down = input.IsKeyPressed(KeyCode::Down) || input.IsKeyPressed(KeyCode::S);
         
-        // Up/W always jumps now
+//up/W always jumps now
         bool jump = input.IsKeyPressed(KeyCode::Space) || input.IsKeyPressed(KeyCode::Up) || 
                     input.IsKeyPressed(KeyCode::W);
         bool jumpPressed = input.IsKeyJustPressed(KeyCode::Space) || 
                            input.IsKeyJustPressed(KeyCode::Up) ||
                            input.IsKeyJustPressed(KeyCode::W);
         
-        // Mouse click for look up (only when standing still)
-        bool lookUp = input.IsMousePressed(MouseButton::Left);
+//mouse click OR U key for look up (only when standing still)
+        bool lookUp = input.IsMousePressed(MouseButton::Left) || input.IsKeyPressed(KeyCode::U);
         
         sonic->HandleInput(left, right, jump, jumpPressed, down, lookUp);
     }
@@ -305,12 +591,40 @@ void HandleInput() {
 void UpdateSonicAnimation() {
     if (!sonic) return;
     
-    // Determine which animation to use based on state
+//determine which animation to use based on state
     std::string newAnim = "sonic_idle";
     unsigned frameDelay = 100;
     
     SonicState state = sonic->GetState();
     float speed = std::abs(sonic->GetSpeed());
+    
+//special handling for active loop - use loop animation
+    if (sonic->IsLoopActive()) {
+        newAnim = "sonic_ball";  //ball animation during loop
+        frameDelay = std::max(25u, static_cast<unsigned>(60 - speed * 3));
+        
+        static uint64_t lastFrameTime = 0;
+        uint64_t now = engine::GetSystemTime();
+        if (now - lastFrameTime >= frameDelay) {
+            sonicFrame++;
+            lastFrameTime = now;
+        }
+        if (newAnim != currentAnim) {
+            currentAnim = newAnim;
+            sonicFrame = 0;
+        }
+        return;  //skip normal animation logic
+    }
+    
+//bored animation phase tracking (file-level for proper reset)
+    static uint64_t boredPhaseStart = 0;
+    static int boredPhase = 0;  //0=not started, 1=stare, 2=loop
+    
+//reset bored phase when not in bored state
+    if (state != SonicState::Bored) {
+        boredPhase = 0;
+        boredPhaseStart = 0;
+    }
     
     switch (state) {
         case SonicState::Idle:
@@ -318,8 +632,27 @@ void UpdateSonicAnimation() {
             frameDelay = 100;
             break;
         case SonicState::Bored:
-            newAnim = "sonic_bored";
-            frameDelay = 300;
+//bored sequence: stare (1 sec) then foot tap loop
+            if (boredPhase == 0) {
+//just entered bored - start with stare
+                boredPhase = 1;
+                boredPhaseStart = GetSystemTime();
+                newAnim = "sonic_bored_stare";
+                frameDelay = 1000;
+                sonicFrame = 0;
+            } else if (boredPhase == 1) {
+//phase 1: wide eyes staring for 1000ms
+                newAnim = "sonic_bored_stare";
+                frameDelay = 1000;
+                if (GetSystemTime() - boredPhaseStart > 1000) {
+                    boredPhase = 2;
+                    sonicFrame = 0;
+                }
+            } else {
+//phase 2: looping foot tap
+                newAnim = "sonic_bored";
+                frameDelay = 500;
+            }
             break;
         case SonicState::LookingUp:
             newAnim = "sonic_lookup";
@@ -330,36 +663,55 @@ void UpdateSonicAnimation() {
             frameDelay = 80;
             break;
         case SonicState::Spindash:
-            // Spindash uses dedicated spindash animation (curled + ball frames)
+//spindash uses dedicated spindash animation (curled + ball frames)
             newAnim = "sonic_spindash";
             {
                 float charge = sonic ? sonic->GetSpindashCharge() : 0.0f;
-                // Spin speed increases with charge: 60ms at 0, down to 20ms at max charge
+//spin speed increases with charge: 60ms at 0, down to 20ms at max charge
                 frameDelay = std::max(20u, static_cast<unsigned>(60 - charge * 4));
             }
             break;
         case SonicState::Walking:
-            newAnim = "sonic_walk";
-            // Faster animation when moving faster
+//use slope animation based on ground angle
+            {
+                float angle = sonic->GetGroundAngle();
+                if (std::abs(angle) > 12.0f) {
+                    newAnim = "sonic_walk_slope";
+                } else {
+                    newAnim = "sonic_walk";
+                }
+            }
+//faster animation when moving faster
             frameDelay = std::max(40u, static_cast<unsigned>(120 - speed * 15));
             break;
         case SonicState::Running:
-            // Use walk but with faster animation (transitional state)
-            newAnim = "sonic_walk";
+//use walk but with faster animation (transitional state)
+            {
+                float angle = sonic->GetGroundAngle();
+                if (std::abs(angle) > 12.0f) {
+                    newAnim = "sonic_walk_slope";
+                } else {
+                    newAnim = "sonic_walk";
+                }
+            }
             frameDelay = std::max(30u, static_cast<unsigned>(60 - speed * 5));
             break;
         case SonicState::FullSpeed:
-            newAnim = "sonic_run";
+//use slope animation based on ground angle
+            {
+                float angle = sonic->GetGroundAngle();
+                if (std::abs(angle) > 12.0f) {
+                    newAnim = "sonic_run_slope";
+                } else {
+                    newAnim = "sonic_run";
+                }
+            }
             frameDelay = 40;
             break;
         case SonicState::Jumping:
             newAnim = "sonic_ball";
-            // Spin faster at higher speeds
+//spin faster at higher speeds
             frameDelay = std::max(25u, static_cast<unsigned>(50 - speed * 3));
-            // Debug: verify ball animation
-            if (currentAnim != "sonic_ball") {
-                std::cout << "Switching to ball animation" << std::endl;
-            }
             break;
         case SonicState::Rolling:
             newAnim = "sonic_ball";
@@ -378,18 +730,18 @@ void UpdateSonicAnimation() {
             frameDelay = 150;
             break;
         case SonicState::Spring:
-            // Simple spring animation:
-            // Going UP (velY < 0): arms spread (bounced up sprite)
-            // Coming DOWN (velY >= 0): ball form (can kill enemies)
+//simple spring animation:
+//going UP (velY < 0): arms spread (bounced up sprite)
+//coming DOWN (velY >= 0): ball form (can kill enemies)
             if (sonic->GetVelY() < 0) {
-                newAnim = "sonic_spring";  // Arms spread going up
+                newAnim = "sonic_spring";  //arms spread going up
             } else {
-                newAnim = "sonic_ball";    // Ball form falling
+                newAnim = "sonic_ball";  //ball form falling
             }
             frameDelay = 80;
             break;
         case SonicState::Landing:
-            // Brief landing pose - use idle for smooth transition
+//brief landing pose - use idle for smooth transition
             newAnim = "sonic_idle";
             frameDelay = 50;
             break;
@@ -398,7 +750,7 @@ void UpdateSonicAnimation() {
             frameDelay = 100;
             break;
         case SonicState::Dead:
-            // Use death animation (falling pose with arms up)
+//use death animation (falling pose with arms up)
             newAnim = "sonic_death";
             frameDelay = 100;
             break;
@@ -419,7 +771,7 @@ void UpdateSonicAnimation() {
             frameDelay = 100;
             break;
         case SonicState::Invincible:
-            // Use current movement animation with sparkle effects
+//use current movement animation with sparkle effects
             if (speed > 6.0f) newAnim = "sonic_run";
             else if (speed > 0.5f) newAnim = "sonic_walk";
             else newAnim = "sonic_idle";
@@ -429,15 +781,15 @@ void UpdateSonicAnimation() {
             break;
     }
     
-    // Handle animation changes with smooth transitions
+//handle animation changes with smooth transitions
     if (newAnim != currentAnim) {
-        // For walk<->run transitions, preserve animation phase
+//for walk<->run transitions, preserve animation phase
         bool wasWalkOrRun = (currentAnim == "sonic_walk" || currentAnim == "sonic_run");
         bool isWalkOrRun = (newAnim == "sonic_walk" || newAnim == "sonic_run");
         
         if (wasWalkOrRun && isWalkOrRun) {
-            // Preserve frame progress proportionally
-            // Walk has 6 frames, Run has 4 frames
+//preserve frame progress proportionally
+//walk has 6 frames, Run has 4 frames
             auto* oldFilm = ResourceManager::Instance().GetFilm(currentAnim);
             auto* newFilm = ResourceManager::Instance().GetFilm(newAnim);
             if (oldFilm && newFilm && oldFilm->GetTotalFrames() > 0) {
@@ -451,7 +803,7 @@ void UpdateSonicAnimation() {
         currentAnim = newAnim;
     }
     
-    // Advance frame
+//advance frame
     uint64_t now = GetSystemTime();
     if (now - lastFrameTime >= frameDelay) {
         sonicFrame++;
@@ -460,24 +812,73 @@ void UpdateSonicAnimation() {
 }
 
 void Physics() {
-    // Only run physics when playing
+//only run physics when playing
     if (currentScreen != GameScreen::Playing) return;
     
     uint64_t currentTime = GetSystemTime();
     
     if (gamePaused) return;
     
-    if (sonic && !GetGame().IsPaused()) {
-        sonic->Update();
+//CRITICAL: If Sonic is dead, handle death animation specially
+//NO collision checks, NO damage, but YES to animation updates and respawn logic
+    if (sonic && sonic->IsDead()) {
+        sonic->Update();  //allow physics for falling death animation
         UpdateSonicAnimation();
         
-        // Update HUD
+//handle death state - wait for animation then respawn or game over
+        if (currentScreen == GameScreen::Playing) {
+//track when death started
+            if (deathStartTime == 0) {
+                deathStartTime = currentTime;
+                SoundManager::Instance().OnDeath();
+            }
+
+//wait 2 seconds for death animation, or until Sonic falls off screen
+            uint64_t deathDuration = currentTime - deathStartTime;
+            bool timeExpired = deathDuration > 2000;  //2 second death animation
+            bool fellOffScreen = sonic->GetY() > 2100.0f;
+
+            if (timeExpired || fellOffScreen) {
+                deathStartTime = 0;  //reset for next death
+
+                int livesNow = sonic->GetLives();
+
+                if (livesNow <= 0) {
+                    currentScreen = GameScreen::GameOver;
+                    gameOverStartTime = currentTime;  //start input delay timer
+                    SoundManager::Instance().OnGameOver();
+                } else {
+//respawn at checkpoint
+                    float respawnX, respawnY;
+                    checkpointManager.GetRespawnPosition(respawnX, respawnY);
+
+//CRITICAL: Respawn collectibles and enemies (per classic Sonic behavior)
+//monitors/springs/spikes/checkpoints persist (don't respawn)
+                    ringManager.Clear();
+                    enemyManager.Clear();
+                    AnimalManager::Instance().Clear();
+                    flowerManager.Clear();
+                    bigRingManager.Clear();
+                    PlaceGameObjects(false);  //respawn rings/enemies/flowers/big rings ONLY
+
+                    sonic->Respawn(respawnX, respawnY);
+                    gameHUD.rings = 0;  //reset rings on death
+                }
+            }
+        }
+        return;  //skip ALL collision/damage checks
+    }
+    
+    if (sonic && !GetGame().IsPaused() && !levelComplete) {
+        sonic->Update();
+        whirlCircleManager.Update();  //check for whirl circle entry and teleports
+        UpdateSonicAnimation();
+
         gameHUD.Update(currentTime);
         gameHUD.rings = sonic->GetRings();
-        gameHUD.lives = sonic->GetLives();
+//NOTE: lives removed - HUD.Draw() gets lives directly from sonic pointer
         gameHUD.score = sonic->GetScore();
         
-        // Update ring manager
         ringManager.Update();
         
         Rect playerBox = sonic->GetBoundingBox();
@@ -486,19 +887,17 @@ void Physics() {
             sonic->AddRings(collected);
         }
         
-        // Update enemies
-        enemyManager.Update(sonic->GetX(), sonic->GetY());
+        enemyManager.Update(sonic->GetX(), sonic->GetY(), viewWindow);
         
-        // Update animals (freed from enemies)
-        animalManager.Update();
+        AnimalManager::Instance().Update();
         
         bool inBall = sonic->IsBallState();
-        bool canKillOnContact = sonic->HasPowerUpInvincibility();  // Power-up kills on contact
-        bool damageImmune = sonic->IsInvincible();  // Any invincibility prevents damage
-        bool inPostDamage = sonic->IsInPostDamageInvincibility();  // Post-damage can't kill
+        bool canKillOnContact = sonic->HasPowerUpInvincibility();  //power-up kills on contact
+        bool damageImmune = sonic->IsInvincible();  //any invincibility prevents damage
+        bool inPostDamage = sonic->IsInPostDamageInvincibility();  //post-damage can't kill
         
-        // During post-damage invincibility, ball state should NOT kill enemies
-        // Only power-up invincibility allows killing on contact
+//during post-damage invincibility, ball state should NOT kill enemies
+//only power-up invincibility allows killing on contact
         bool canKillInBall = inBall && !inPostDamage;
         
         int result = enemyManager.CheckCollision(playerBox, canKillInBall, canKillOnContact, damageImmune);
@@ -506,20 +905,21 @@ void Physics() {
         if (result > 0) {
             sonic->AddScore(result);
             gameHUD.AddScore(result, sonic->GetX(), sonic->GetY());
-        } else if (result < 0) {
+        } else if (result < 0 && !sonic->IsDead() && !godModeActive) {
+//CRITICAL: Only take damage if not already dead and not in god mode
             sonic->TakeDamage();
         }
         
-        // Update and check springs
         springManager.Update(currentTime);
         float bounceVelX = 0, bounceVelY = 0;
         if (springManager.CheckCollision(playerBox, bounceVelX, bounceVelY, currentTime)) {
+            SoundManager::Instance().PlaySound(SoundEffect::Spring, 1.5f);  //150% volume boost
             sonic->ApplyBounce(bounceVelX, bounceVelY);
             std::cout << "Spring bounce!" << std::endl;
         }
         
-        // Check spikes (only damage if not invincible)
-        if (!sonic->IsInvincible()) {
+//check spikes (only damage if not invincible AND not dead AND not god mode)
+        if (!sonic->IsInvincible() && !sonic->IsDead() && !godModeActive) {
             float sonicSpeed = sonic->GetSpeed();
             float sonicVelY = sonic->GetVelY();
             if (spikeManager.CheckCollision(playerBox, sonicSpeed, sonicVelY)) {
@@ -528,15 +928,15 @@ void Physics() {
             }
         }
         
-        // Update and check checkpoints
         checkpointManager.Update(currentTime);
         if (checkpointManager.CheckCollision(playerBox, currentTime)) {
             std::cout << "Checkpoint activated!" << std::endl;
-            // Could play sound here
+            SoundManager::Instance().OnCheckpoint();
         }
         
-        // Update and check monitors
         monitorManager.Update(currentTime);
+        flowerManager.Update(currentTime);
+        bigRingManager.Update(currentTime);
         float sonicVelY = sonic->GetVelY();
         int monitorResult = monitorManager.CheckCollision(playerBox, inBall, sonicVelY, currentTime);
         if (monitorResult >= 0) {
@@ -544,74 +944,66 @@ void Physics() {
             switch (type) {
                 case MonitorType::Ring:
                     sonic->AddRings(10);
+                    SoundManager::Instance().OnRingCollect();
                     std::cout << "+10 Rings!" << std::endl;
                     break;
                 case MonitorType::Shield:
-                    sonic->GiveShield(30000);  // 30 seconds
+                    sonic->GiveShield(30000);  //30 seconds
+                    SoundManager::Instance().OnRingCollect();
                     std::cout << "Shield!" << std::endl;
                     break;
                 case MonitorType::Invincibility:
-                    sonic->GiveInvincibility(20000);  // 20 seconds
+                    sonic->GiveInvincibility(20000);  //20 seconds
+                    SoundManager::Instance().OnRingCollect();
                     std::cout << "Invincibility!" << std::endl;
                     break;
                 case MonitorType::SpeedShoes:
-                    sonic->GiveSpeedBoost(10000);  // 10 seconds
+                    sonic->GiveSpeedBoost(10000);  //10 seconds
+                    SoundManager::Instance().OnRingCollect();
                     std::cout << "Speed Shoes!" << std::endl;
                     break;
                 case MonitorType::ExtraLife:
                     sonic->AddLife();
                     gameHUD.GainLife();
+                    SoundManager::Instance().OnRingCollect();
                     std::cout << "Extra Life!" << std::endl;
                     break;
                 case MonitorType::Eggman:
-                    sonic->TakeDamage();
-                    std::cout << "Eggman trap!" << std::endl;
+                    SoundManager::Instance().OnMonitorBreak();
+                    if (!godModeActive) {
+                        sonic->TakeDamage();
+                        std::cout << "Eggman trap!" << std::endl;
+                    } else {
+                        std::cout << "Eggman trap blocked by god mode!" << std::endl;
+                    }
                     break;
             }
             gameHUD.AddScore(100, sonic->GetX(), sonic->GetY());
         }
         
-        // Check for death (falling off screen / into pit)
-        // Terrain is 15 tiles * 128px = 1920px total height
-        // Ground is at row 13, so ground level ~1664px
-        // Death should trigger when falling below the map
-        const float PIT_DEATH_Y = 1900.0f;  // Below ground level
-        if (sonic->GetY() > PIT_DEATH_Y && sonic->GetState() != SonicState::Dead) {
-            std::cout << "PIT DEATH! Y=" << sonic->GetY() << " Lives=" << sonic->GetLives() << std::endl;
-            sonic->Die();  // This decreases lives
+//check big ring collision - level complete!
+        if (!levelComplete && bigRingManager.CheckCollision(playerBox)) {
+            levelComplete = true;
+            levelCompleteTime = currentTime;
+            levelCompleteSelection = 0;
+            SoundManager::Instance().OnActClear();
+//add bonus score for rings
+            gameHUD.AddScore(sonic->GetRings() * 100, sonic->GetX(), sonic->GetY());
         }
         
-        // Handle death state - wait for animation then respawn or game over
-        static uint64_t deathStartTime = 0;
-        if (sonic->GetState() == SonicState::Dead && currentScreen == GameScreen::Playing) {
-            // Track when death started
-            if (deathStartTime == 0) {
-                deathStartTime = GetSystemTime();
+//check for death - touching GRID_DEATH tiles (dark red tiles)
+//this replaces the old height-based void check
+//god mode: can walk on death tiles without dying
+        if (!sonic->IsDead() && gridLayer && !godModeActive) {
+            engine::Rect playerBox = sonic->GetBoundingBox();
+            if (gridLayer->IsInDeath(playerBox)) {
+                std::cout << "DEATH TILE at (" << sonic->GetX() << ", " << sonic->GetY() << ")" << std::endl;
+                sonic->Die();
             }
-            
-            // Wait 2 seconds for death animation, or until Sonic falls off screen
-            uint64_t deathDuration = GetSystemTime() - deathStartTime;
-            bool timeExpired = deathDuration > 2000;  // 2 second death animation
-            bool fellOffScreen = sonic->GetY() > 2100.0f;
-            
-            if (timeExpired || fellOffScreen) {
-                deathStartTime = 0;  // Reset for next death
-                
-                if (sonic->GetLives() <= 0) {
-                    std::cout << "GAME OVER - No lives left!" << std::endl;
-                    currentScreen = GameScreen::GameOver;
-                } else {
-                    // Respawn at checkpoint
-                    float respawnX, respawnY;
-                    checkpointManager.GetRespawnPosition(respawnX, respawnY);
-                    std::cout << "Respawning at (" << respawnX << ", " << respawnY << ") - Lives: " << sonic->GetLives() << std::endl;
-                    sonic->Respawn(respawnX, respawnY);
-                    gameHUD.rings = 0;  // Reset rings on death
-                }
-            }
-        } else {
-            deathStartTime = 0;  // Reset if not dead
         }
+        
+//NOTE: Death state handling is now at the TOP of Physics() to ensure
+//animation updates happen even when dead
     }
 }
 
@@ -666,12 +1058,14 @@ void DrawGridOverlay() {
                 int screenY = row * GRID_ELEMENT_HEIGHT - viewWindow.y;
                 
                 Color c;
-                if (tile == GRID_SOLID) {
-                    c = MakeColor(101, 67, 33, 200);
-                } else if (tile & GRID_TOP_SOLID) {
-                    c = MakeColor(34, 139, 34, 160);
-                } else {
-                    c = MakeColor(255, 255, 0, 100);
+                switch (tile) {
+                    case GRID_SOLID:    c = MakeColor(255, 255, 255, 180); break;  //white - solid
+                    case GRID_PLATFORM: c = MakeColor(0, 255, 0, 160); break;  //green - platform
+                    case GRID_SLOPE:    c = MakeColor(255, 255, 0, 160); break;  //yellow - slope
+                    case GRID_LOOP:     c = MakeColor(255, 165, 0, 160); break;  //orange - loop
+                    case GRID_TUNNEL:   c = MakeColor(0, 255, 255, 160); break;  //cyan - tunnel
+                    case GRID_DEATH:    c = MakeColor(139, 0, 0, 180); break;  //dark red - death
+                    default:            c = MakeColor(128, 128, 128, 100); break;  //gray - unknown
                 }
                 
                 gfx.DrawRect({screenX, screenY, GRID_ELEMENT_WIDTH, GRID_ELEMENT_HEIGHT}, c, true);
@@ -688,76 +1082,157 @@ void DrawSonicSprite() {
     int screenX = box.x - viewWindow.x;
     int screenY = box.y - viewWindow.y;
     
-    // Skip if completely off screen
+//skip if completely off screen
     if (screenX + box.w < 0 || screenX > SCREEN_WIDTH ||
         screenY + box.h < 0 || screenY > SCREEN_HEIGHT) {
         return;
     }
     
-    // Draw collision box in debug mode (magenta outline only)
-    if (showDebug) {
+//draw collision box when grid view is enabled (magenta outline only)
+    if (showGrid) {
         gfx.DrawRect({screenX, screenY, box.w, box.h}, MakeColor(255, 0, 255), false);
     }
     
-    // Try to draw with loaded sprite
+//center position for effects
+    int centerX = screenX + box.w / 2;
+    int centerY = screenY + box.h / 2;
+    
+//draw Shield (smooth rotation animation around Sonic)
+    if (sonic->HasShield() && assetsLoaded) {
+        auto* shieldFilm = ResourceManager::Instance().GetFilm("shield");
+        if (shieldFilm && shieldFilm->GetTotalFrames() > 0) {
+            uint64_t now = engine::GetSystemTime();
+            int shieldFrame = (now / 100) % shieldFilm->GetTotalFrames();
+            float pulsePhase = (now % 2000) / 2000.0f;
+            float pulseScale = SPRITE_SCALE * (1.0f + std::sin(pulsePhase * 3.14159f * 2.0f) * 0.03f);
+            int baseOffsetX = static_cast<int>(23.5f * pulseScale);
+            int baseOffsetY = static_cast<int>(23.5f * pulseScale);
+            int shieldX = centerX - baseOffsetX;
+            int shieldY = centerY - baseOffsetY;
+            shieldFilm->DisplayFrameScaled({shieldX, shieldY}, static_cast<byte>(shieldFrame), SPRITE_SCALE);
+        }
+    }
+    
+//draw Sonic sprite SCALED UP to match world size
     if (assetsLoaded) {
         auto* film = ResourceManager::Instance().GetFilm(currentAnim);
         if (film && film->GetTotalFrames() > 0) {
             int frameIdx = sonicFrame % film->GetTotalFrames();
             Rect frameBox = film->GetFrameBox(static_cast<byte>(frameIdx));
             
-            // Center sprite horizontally on collision box, align bottom
-            int drawX = screenX + (box.w - frameBox.w) / 2;
-            int drawY = screenY + box.h - frameBox.h;
+//calculate scaled dimensions
+            int scaledW = static_cast<int>(frameBox.w * SPRITE_SCALE);
+            int scaledH = static_cast<int>(frameBox.h * SPRITE_SCALE);
             
-            // Flip sprite based on facing direction (like Dami-Karv)
+//center sprite horizontally on collision box, align bottom
+            int drawX = screenX + (box.w - scaledW) / 2;
+            int drawY = screenY + box.h - scaledH;
+            
+//flip sprite based on facing direction
             bool flipX = (sonic->GetFacing() == FacingDirection::Left);
             
             if (flipX) {
-                film->DisplayFrameFlipped({drawX, drawY}, static_cast<byte>(frameIdx));
+                film->DisplayFrameScaledFlipped({drawX, drawY}, static_cast<byte>(frameIdx), SPRITE_SCALE);
             } else {
-                film->DisplayFrame({drawX, drawY}, static_cast<byte>(frameIdx));
+                film->DisplayFrameScaled({drawX, drawY}, static_cast<byte>(frameIdx), SPRITE_SCALE);
             }
-            return;  // Successfully drew sprite
         }
+    } else {
+//simple fallback - just draw a blue rectangle if sprites fail
+        gfx.DrawRect({screenX + 2, screenY + 2, box.w - 4, box.h - 4}, MakeColor(0, 80, 200), true);
+        gfx.DrawRect({screenX + 2, screenY + 2, box.w - 4, box.h - 4}, MakeColor(0, 40, 160), false);
     }
     
-    // Simple fallback - just draw a blue rectangle if sprites fail
-    gfx.DrawRect({screenX + 2, screenY + 2, box.w - 4, box.h - 4}, MakeColor(0, 80, 200), true);
-    gfx.DrawRect({screenX + 2, screenY + 2, box.w - 4, box.h - 4}, MakeColor(0, 40, 160), false);
+//draw Invincibility sparkles (stars rotating around Sonic)
+    if (sonic->IsInvincible() && assetsLoaded) {
+        uint64_t now = engine::GetSystemTime();
+        auto* sparkleFilm = ResourceManager::Instance().GetFilm("invincibility");
+        if (sparkleFilm && sparkleFilm->GetTotalFrames() > 0) {
+            if (now - sparkleEffect.lastUpdate > 25) {
+                sparkleEffect.angle += 0.12f;
+                sparkleEffect.lastUpdate = now;
+            }
+            
+//draw sparkles in an orbit around Sonic - scaled up
+            for (int i = 0; i < sparkleEffect.numSparkles; i++) {
+                float baseAngle = sparkleEffect.angle + (i * 3.14159f * 2.0f / sparkleEffect.numSparkles);
+                float vertOffset = std::sin(baseAngle * 2.0f) * 5.0f * SPRITE_SCALE;
+                
+//vary radius slightly per sparkle for depth
+                float radius = sparkleEffect.radius + (i % 2 == 0 ? 5.0f : -5.0f);
+                
+                int starX = centerX + static_cast<int>(std::cos(baseAngle) * radius) - 8;
+                int starY = centerY + static_cast<int>(std::sin(baseAngle) * radius * 0.7f + vertOffset) - 8;
+                
+//cycle through frames, but offset each sparkle so they're not all the same
+                int frameIdx = (now / 60 + i * 2) % sparkleFilm->GetTotalFrames();
+                sparkleFilm->DisplayFrame({starX, starY}, static_cast<byte>(frameIdx));
+            }
+            
+//removed subtle glow/halo effect to eliminate transparent box during invincibility
+        }
+    }
 }
 
 void DrawSprings() {
     auto& gfx = GetGraphics();
     
-    // Get spring films if loaded
     auto* yellowSpringFilm = assetsLoaded ? ResourceManager::Instance().GetFilm("spring_yellow") : nullptr;
     auto* redSpringFilm = assetsLoaded ? ResourceManager::Instance().GetFilm("spring_red") : nullptr;
+    auto* sideSpringFilm = assetsLoaded ? ResourceManager::Instance().GetFilm("spring_side") : nullptr;
+    
+//scaled heights for 1280x896 resolution
+    static const int NORMAL_HEIGHT = static_cast<int>(16 * SPRITE_SCALE);
+    static const int EXTENDED_HEIGHT = static_cast<int>(32 * SPRITE_SCALE);
+    static const int HEIGHT_DIFF = EXTENDED_HEIGHT - NORMAL_HEIGHT;
     
     for (const auto& spring : springManager.GetSprings()) {
         int screenX = static_cast<int>(spring.x) - viewWindow.x;
         int screenY = static_cast<int>(spring.y) - viewWindow.y;
         
-        // Skip if off-screen
-        if (screenX + spring.width < 0 || screenX > SCREEN_WIDTH ||
-            screenY + spring.height < 0 || screenY > SCREEN_HEIGHT) continue;
+//scale spring dimensions for collision check
+        int scaledW = static_cast<int>(spring.width * SPRITE_SCALE);
+        int scaledH = static_cast<int>(spring.height * SPRITE_SCALE);
         
-        // Choose film based on spring type
-        auto* springFilm = spring.isYellow ? yellowSpringFilm : redSpringFilm;
-        int frameIdx = spring.isCompressed ? 1 : 0;  // 0=normal, 1=compressed
+        if (screenX + scaledW < 0 || screenX > SCREEN_WIDTH ||
+            screenY + scaledH < 0 || screenY > SCREEN_HEIGHT) continue;
         
-        if (springFilm && springFilm->GetTotalFrames() > 0) {
-            springFilm->DisplayFrame({screenX, screenY}, static_cast<byte>(frameIdx % springFilm->GetTotalFrames()));
+        int frameIdx = spring.GetAnimFrameIndex();
+        
+//use side spring for diagonal directions
+        bool isDiagonal = (spring.direction == SpringDirection::DiagonalUpLeft || 
+                          spring.direction == SpringDirection::DiagonalUpRight ||
+                          spring.direction == SpringDirection::Left ||
+                          spring.direction == SpringDirection::Right);
+        
+        if (isDiagonal && sideSpringFilm && sideSpringFilm->GetTotalFrames() >= 2) {
+//side spring: frame 0 = normal, frame 1 = extended
+            int sideFrame = (frameIdx == 2) ? 1 : 0;
+            
+//flip horizontally for left-facing springs
+            if (spring.direction == SpringDirection::DiagonalUpLeft || 
+                spring.direction == SpringDirection::Left) {
+                sideSpringFilm->DisplayFrameScaledFlipped({screenX, screenY}, 
+                    static_cast<byte>(sideFrame), SPRITE_SCALE);
+            } else {
+                sideSpringFilm->DisplayFrameScaled({screenX, screenY}, 
+                    static_cast<byte>(sideFrame), SPRITE_SCALE);
+            }
         } else {
-            // Fallback placeholder
-            Color springColor = spring.isYellow ? MakeColor(255, 215, 0) : MakeColor(255, 50, 50);
-            int currentHeight = spring.GetCurrentHeight();
-            gfx.DrawRect({screenX, screenY + spring.height - 8, spring.width, 8}, 
-                         MakeColor(100, 100, 100), true);
-            int coilTop = screenY + spring.height - currentHeight;
-            gfx.DrawRect({screenX + 4, coilTop, spring.width - 8, currentHeight - 8}, 
-                         springColor, true);
-            gfx.DrawRect({screenX, coilTop - 4, spring.width, 6}, springColor, true);
+//vertical springs (Up)
+            auto* springFilm = spring.isYellow ? yellowSpringFilm : redSpringFilm;
+            
+            if (springFilm && springFilm->GetTotalFrames() >= 3) {
+                int drawY = screenY;
+                if (frameIdx == 2) {
+                    drawY = screenY - HEIGHT_DIFF;
+                }
+                springFilm->DisplayFrameScaled({screenX, drawY}, static_cast<byte>(frameIdx), SPRITE_SCALE);
+            } else {
+//fallback placeholder
+                Color springColor = spring.isYellow ? MakeColor(255, 215, 0) : MakeColor(255, 50, 50);
+                gfx.DrawRect({screenX, screenY, scaledW, scaledH}, springColor, true);
+            }
         }
     }
 }
@@ -772,7 +1247,8 @@ void DrawSpikes() {
         if (screenX + spike.width < 0 || screenX > SCREEN_WIDTH ||
             screenY + spike.height < 0 || screenY > SCREEN_HEIGHT) continue;
         
-        // Get spike sprite frame from misc sheet
+//get spike sprite frame from misc sheet
+        bool drewSprite = false;
         if (assetsLoaded) {
             auto& rm = ResourceManager::Instance();
             auto miscBmp = rm.GetMiscSheet();
@@ -781,22 +1257,25 @@ void DrawSpikes() {
                 gfx.DrawTexture(miscBmp->GetTexture(), 
                                {frame.x, frame.y, frame.w, frame.h},
                                {screenX, screenY});
+                drewSprite = true;
             }
         }
         
-        // Fallback placeholder (always draw for now since sprite may not work)
-        Color spikeColor = MakeColor(180, 180, 180);
-        Color baseColor = MakeColor(100, 100, 100);
-        gfx.DrawRect({screenX, screenY + spike.height - 6, spike.width, 6}, baseColor, true);
-        int spikeCount = 4;
-        int spikeWidth = spike.width / spikeCount;
-        for (int i = 0; i < spikeCount; ++i) {
-            int sx = screenX + i * spikeWidth + spikeWidth/4;
-            int sy = screenY;
-            gfx.DrawRect({sx, sy, spikeWidth/2, spike.height - 6}, spikeColor, true);
+//fallback placeholder only if sprite didn't load
+        if (!drewSprite) {
+            Color spikeColor = MakeColor(180, 180, 180);
+            Color baseColor = MakeColor(100, 100, 100);
+            gfx.DrawRect({screenX, screenY + spike.height - 6, spike.width, 6}, baseColor, true);
+            int spikeCount = 4;
+            int spikeWidth = spike.width / spikeCount;
+            for (int i = 0; i < spikeCount; ++i) {
+                int sx = screenX + i * spikeWidth + spikeWidth/4;
+                int sy = screenY;
+                gfx.DrawRect({sx, sy, spikeWidth/2, spike.height - 6}, spikeColor, true);
+            }
         }
         
-        // Debug: draw hitbox when grid is shown
+//debug: draw hitbox when grid is shown
         if (showGrid) {
             Rect hitbox = spike.GetBoundingBox();
             int hx = hitbox.x - viewWindow.x;
@@ -809,7 +1288,7 @@ void DrawSpikes() {
 void DrawCheckpoints() {
     auto& gfx = GetGraphics();
     
-    // Get checkpoint film if loaded
+//get checkpoint film if loaded
     auto* checkpointFilm = assetsLoaded ? ResourceManager::Instance().GetFilm("checkpoint") : nullptr;
     
     for (const auto& cp : checkpointManager.GetCheckpoints()) {
@@ -820,11 +1299,11 @@ void DrawCheckpoints() {
             screenY + cp.height < 0 || screenY > SCREEN_HEIGHT) continue;
         
         if (checkpointFilm && checkpointFilm->GetTotalFrames() > 0) {
-            // Use animated frames based on state
+//use animated frames based on state
             int frameIdx = cp.activated ? (cp.animFrame % checkpointFilm->GetTotalFrames()) : 0;
             checkpointFilm->DisplayFrame({screenX, screenY - 32}, static_cast<byte>(frameIdx));
         } else {
-            // Fallback placeholder
+//fallback placeholder
             Color poleColor = MakeColor(100, 100, 100);
             gfx.DrawRect({screenX + cp.width/2 - 3, screenY, 6, cp.height}, poleColor, true);
             
@@ -846,8 +1325,6 @@ void DrawMonitors() {
     auto miscBmp = assetsLoaded ? ResourceManager::Instance().GetMiscSheet() : nullptr;
     
     for (const auto& monitor : monitorManager.GetMonitors()) {
-        if (monitor.state == MonitorState::Destroyed) continue;
-        
         int screenX = static_cast<int>(monitor.x) - viewWindow.x;
         int screenY = static_cast<int>(monitor.y) - viewWindow.y;
         
@@ -855,41 +1332,40 @@ void DrawMonitors() {
             screenY + monitor.height < 0 || screenY > SCREEN_HEIGHT) continue;
         
         if (miscBmp) {
-            if (monitor.state == MonitorState::Breaking) {
-                // Draw broken box (shifted down by 17px like Dami-Karv)
+            if (monitor.state == MonitorState::Breaking || monitor.state == MonitorState::Destroyed) {
+//draw broken box debris (shifted down to align at bottom)
+//broken sprite is 32x16, original is 32x32, so shift down by 16
                 auto frame = MiscSpriteConfig::GetMonitorBroken();
                 gfx.DrawTexture(miscBmp->GetTexture(),
                                {frame.x, frame.y, frame.w, frame.h},
-                               {screenX, screenY + 17});
+                               {screenX, screenY + 16});
             } else {
-                // Draw unbroken monitor box
+//draw unbroken monitor box
                 auto boxFrame = MiscSpriteConfig::GetMonitorUnbroken();
                 gfx.DrawTexture(miscBmp->GetTexture(),
                                {boxFrame.x, boxFrame.y, boxFrame.w, boxFrame.h},
                                {screenX, screenY});
                 
-                // Draw icon on top (centered, with flicker)
-                if (monitor.animFrame == 0) {
-                    FrameRect iconFrame;
-                    switch (monitor.type) {
-                        case MonitorType::Ring:         iconFrame = MiscSpriteConfig::GetIconRing(); break;
-                        case MonitorType::Shield:       iconFrame = MiscSpriteConfig::GetIconShield(); break;
-                        case MonitorType::Invincibility: iconFrame = MiscSpriteConfig::GetIconInvincible(); break;
-                        case MonitorType::SpeedShoes:   iconFrame = MiscSpriteConfig::GetIconSpeed(); break;
-                        case MonitorType::ExtraLife:    iconFrame = MiscSpriteConfig::GetIconLife(); break;
-                        case MonitorType::Eggman:       iconFrame = MiscSpriteConfig::GetIconEggman(); break;
-                        default: iconFrame = MiscSpriteConfig::GetIconRing(); break;
-                    }
-                    // Center icon in monitor
-                    int iconX = screenX + (monitor.width - iconFrame.w) / 2;
-                    int iconY = screenY + (monitor.height - iconFrame.h) / 2 - 2;
-                    gfx.DrawTexture(miscBmp->GetTexture(),
-                                   {iconFrame.x, iconFrame.y, iconFrame.w, iconFrame.h},
-                                   {iconX, iconY});
+//draw icon on top (centered, always visible when not broken)
+                FrameRect iconFrame;
+                switch (monitor.type) {
+                    case MonitorType::Ring:         iconFrame = MiscSpriteConfig::GetIconRing(); break;
+                    case MonitorType::Shield:       iconFrame = MiscSpriteConfig::GetIconShield(); break;
+                    case MonitorType::Invincibility: iconFrame = MiscSpriteConfig::GetIconInvincible(); break;
+                    case MonitorType::SpeedShoes:   iconFrame = MiscSpriteConfig::GetIconSpeed(); break;
+                    case MonitorType::ExtraLife:    iconFrame = MiscSpriteConfig::GetIconLife(); break;
+                    case MonitorType::Eggman:       iconFrame = MiscSpriteConfig::GetIconEggman(); break;
+                    default: iconFrame = MiscSpriteConfig::GetIconRing(); break;
                 }
+//center icon in monitor
+                int iconX = screenX + (monitor.width - iconFrame.w) / 2;
+                int iconY = screenY + (monitor.height - iconFrame.h) / 2 - 2;
+                gfx.DrawTexture(miscBmp->GetTexture(),
+                               {iconFrame.x, iconFrame.y, iconFrame.w, iconFrame.h},
+                               {iconX, iconY});
             }
         } else {
-            // Fallback placeholder
+//fallback placeholder
             if (monitor.state == MonitorState::Breaking) {
                 gfx.DrawRect({screenX - 5, screenY - 5, monitor.width + 10, monitor.height + 10}, 
                              MakeColor(255, 200, 100), true);
@@ -898,23 +1374,116 @@ void DrawMonitors() {
                              MakeColor(80, 80, 80), true);
                 gfx.DrawRect({screenX + 3, screenY + 3, monitor.width - 6, monitor.height - 10}, 
                              MakeColor(50, 80, 120), true);
-                if (monitor.animFrame == 0) {
-                    Color iconColor = monitor.GetIconColor();
-                    int iconSize = 12;
-                    int iconX = screenX + monitor.width/2 - iconSize/2;
-                    int iconY = screenY + monitor.height/2 - iconSize/2 - 2;
-                    gfx.DrawRect({iconX, iconY, iconSize, iconSize}, iconColor, true);
-                }
+//always show icon when not broken
+                Color iconColor = monitor.GetIconColor();
+                int iconSize = 12;
+                int iconX = screenX + monitor.width/2 - iconSize/2;
+                int iconY = screenY + monitor.height/2 - iconSize/2 - 2;
+                gfx.DrawRect({iconX, iconY, iconSize, iconSize}, iconColor, true);
             }
         }
         
-        // Power-up popup
+//power-up popup (flying icon)
         if (monitor.showPopup) {
-            int popupX = screenX + monitor.width/2 - 8;
             int popupY = static_cast<int>(monitor.popupY) - viewWindow.y;
-            Color iconColor = monitor.GetIconColor();
-            gfx.DrawRect({popupX, popupY, 16, 16}, iconColor, true);
-            gfx.DrawRect({popupX, popupY, 16, 16}, MakeColor(255, 255, 255), false);
+
+            if (miscBmp) {
+//get the same icon sprite as shown in the monitor
+                FrameRect iconFrame;
+                switch (monitor.type) {
+                    case MonitorType::Ring:         iconFrame = MiscSpriteConfig::GetIconRing(); break;
+                    case MonitorType::Shield:       iconFrame = MiscSpriteConfig::GetIconShield(); break;
+                    case MonitorType::Invincibility: iconFrame = MiscSpriteConfig::GetIconInvincible(); break;
+                    case MonitorType::SpeedShoes:   iconFrame = MiscSpriteConfig::GetIconSpeed(); break;
+                    case MonitorType::ExtraLife:    iconFrame = MiscSpriteConfig::GetIconLife(); break;
+                    case MonitorType::Eggman:       iconFrame = MiscSpriteConfig::GetIconEggman(); break;
+                    default: iconFrame = MiscSpriteConfig::GetIconRing(); break;
+                }
+//use original sprite size
+                float iconScale = 1.0f;
+                int scaledW = static_cast<int>(iconFrame.w * iconScale);
+//center popup icon horizontally over monitor
+                int popupX = screenX + (monitor.width - scaledW) / 2;
+
+//draw scaled icon using sprite
+                sf::Sprite iconSprite(miscBmp->GetTexture());
+                iconSprite.setTextureRect(sf::IntRect(iconFrame.x, iconFrame.y, iconFrame.w, iconFrame.h));
+                iconSprite.setScale(iconScale, iconScale);
+                iconSprite.setPosition(static_cast<float>(popupX), static_cast<float>(popupY));
+                gfx.DrawSprite(iconSprite);
+            } else {
+//fallback placeholder (larger size)
+                int iconSize = 24;  //1.5x larger than default 16
+                int popupX = screenX + monitor.width/2 - iconSize/2;
+                Color iconColor = monitor.GetIconColor();
+                gfx.DrawRect({popupX, popupY, iconSize, iconSize}, iconColor, true);
+                gfx.DrawRect({popupX, popupY, iconSize, iconSize}, MakeColor(255, 255, 255), false);
+            }
+        }
+    }
+}
+
+//draw animated flowers (decorative background elements from tiles sheet)
+void DrawFlowers() {
+    if (!assetsLoaded) return;
+    
+    auto* flowerTallFilm = ResourceManager::Instance().GetFilm("flower_tall");
+    auto* flowerShortFilm = ResourceManager::Instance().GetFilm("flower_short");
+    
+//offset to align flower sprites with stems drawn in tiles
+    constexpr int FLOWER_OFFSET_X = -15;  //slightly left to center on stem
+    constexpr int FLOWER_OFFSET_Y = -20;  //move up to sit on stem
+    
+    for (const auto& flower : flowerManager.GetFlowers()) {
+        int screenX = static_cast<int>(flower.x) - viewWindow.x + FLOWER_OFFSET_X;
+        int screenY = static_cast<int>(flower.y) - viewWindow.y + FLOWER_OFFSET_Y;
+        
+//skip if off screen
+        if (screenX + flower.width < 0 || screenX > SCREEN_WIDTH ||
+            screenY + flower.height < 0 || screenY > SCREEN_HEIGHT) continue;
+        
+        auto* film = (flower.type == FlowerType::Tall) ? flowerTallFilm : flowerShortFilm;
+        if (film && film->GetTotalFrames() > 0) {
+            int frameIdx = flower.animFrame % film->GetTotalFrames();
+            film->DisplayFrame({screenX, screenY}, static_cast<byte>(frameIdx));
+        }
+    }
+}
+
+void DrawBigRings() {
+    if (!assetsLoaded) return;
+    
+    auto* bigRingFilm = ResourceManager::Instance().GetFilm("big_ring");
+    
+//frame widths for centering (frames have different widths)
+    static const int frameWidths[] = {63, 47, 23, 47};
+    static const int maxWidth = 63;
+    
+    for (const auto& ring : bigRingManager.GetRings()) {
+        if (!ring.active || ring.collected) continue;
+        
+        int screenX = static_cast<int>(ring.x) - viewWindow.x;
+        int screenY = static_cast<int>(ring.y) - viewWindow.y;
+        
+        int scaledW = static_cast<int>(maxWidth * ring.scale);
+        int scaledH = static_cast<int>(ring.height * ring.scale);
+        
+//skip if off screen
+        if (screenX + scaledW < 0 || screenX > SCREEN_WIDTH ||
+            screenY + scaledH < 0 || screenY > SCREEN_HEIGHT) continue;
+        
+        if (bigRingFilm && bigRingFilm->GetTotalFrames() >= 4) {
+            int frameIdx = ring.animFrame % 4;
+            
+//center the frame horizontally (frames have different widths)
+            int frameW = frameWidths[frameIdx];
+            int offsetX = static_cast<int>((maxWidth - frameW) * ring.scale / 2.0f);
+            
+            bigRingFilm->DisplayFrameScaled({screenX + offsetX, screenY}, static_cast<engine::byte>(frameIdx), ring.scale);
+        } else {
+//fallback: gold rectangle
+            auto& gfx = GetGraphics();
+            gfx.DrawRect({screenX, screenY, scaledW, scaledH}, MakeColor(255, 215, 0), true);
         }
     }
 }
@@ -922,646 +1491,957 @@ void DrawMonitors() {
 void DrawHUD() {
     auto& gfx = GetGraphics();
     
-    gfx.DrawRect({5, 5, 200, 100}, MakeColor(0, 0, 0, 200), true);
-    gfx.DrawRect({5, 5, 200, 100}, MakeColor(255, 255, 255, 100), false);
-    
-    // Ring icon and count bar
-    gfx.DrawRect({15, 15, 16, 16}, MakeColor(255, 215, 0), true);
-    gfx.DrawRect({19, 19, 8, 8}, MakeColor(0, 0, 0, 200), true);
-    gfx.DrawRect({15, 15, 16, 16}, MakeColor(200, 150, 0), false);
-    
+//HUD for 160x112 resolution
     if (sonic) {
-        int rings = sonic->GetRings();
-        int barWidth = std::min(rings * 3, 150);
-        gfx.DrawRect({40, 18, barWidth, 10}, MakeColor(255, 215, 0), true);
-        gfx.DrawRect({40, 18, 150, 10}, MakeColor(100, 100, 100), false);
-    }
-    
-    // Life icon
-    gfx.DrawRect({15, 40, 16, 16}, MakeColor(0, 100, 255), true);
-    gfx.DrawRect({15, 40, 16, 16}, MakeColor(0, 0, 0), false);
-    
-    if (sonic) {
-        int lives = sonic->GetLives();
-        for (int i = 0; i < lives && i < 5; ++i) {
-            gfx.DrawRect({40 + i * 20, 43, 12, 12}, MakeColor(0, 150, 255), true);
-        }
-    }
-    
-    // Score bar
-    gfx.DrawRect({15, 65, 16, 16}, MakeColor(255, 255, 255), true);
-    gfx.DrawRect({15, 65, 16, 16}, MakeColor(200, 200, 200), false);
-    
-    if (sonic) {
-        int score = sonic->GetScore();
-        int scoreWidth = std::min(score / 10, 150);
-        gfx.DrawRect({40, 68, scoreWidth, 10}, MakeColor(255, 255, 255), true);
-    }
-    
-    // Status indicators
-    if (sonic) {
-        Color groundColor = sonic->IsOnGround() ? MakeColor(0, 255, 0) : MakeColor(255, 0, 0);
-        gfx.DrawRect({15, 88, 12, 12}, groundColor, true);
+//score
+        char scoreStr[16];
+        snprintf(scoreStr, sizeof(scoreStr), "%06d", sonic->GetScore());
+        gfx.DrawText(scoreStr, 2, 1, MakeColor(255, 255, 0));
         
-        if (sonic->IsInvincible()) {
-            gfx.DrawRect({35, 88, 12, 12}, MakeColor(255, 255, 0), true);
-        }
-        if (sonic->HasShield()) {
-            gfx.DrawRect({55, 88, 12, 12}, MakeColor(100, 200, 255), true);
-        }
+//time
+        int minutes = gameHUD.timeSeconds / 60;
+        int seconds = gameHUD.timeSeconds % 60;
+        char timeStr[16];
+        snprintf(timeStr, sizeof(timeStr), "%d:%02d", minutes, seconds);
+        gfx.DrawText(timeStr, 2, 10, MakeColor(255, 255, 0));
+        
+//rings
+        int rings = sonic->GetRings();
+        char ringStr[12];
+        snprintf(ringStr, sizeof(ringStr), "R:%02d", rings);
+        Color ringColor = (rings == 0 && (GetSystemTime() / 250) % 2 == 0) 
+                         ? MakeColor(255, 0, 0) : MakeColor(255, 255, 0);
+        gfx.DrawText(ringStr, 2, 19, ringColor);
+        
+//lives
+        char livesStr[8];
+        snprintf(livesStr, sizeof(livesStr), "x%d", sonic->GetLives());
+        gfx.DrawText(livesStr, 2, SCREEN_HEIGHT - 10, MakeColor(255, 255, 255));
     }
 }
 
 void DrawDebugInfo() {
-    if (!showDebug || !sonic) return;
-    
+}
+
+//native HUD - draws directly to window at 640x448
+void DrawNativeHUD() {
+    if (!sonic) return;
     auto& gfx = GetGraphics();
     
-    gfx.DrawRect({SCREEN_WIDTH - 200, 5, 195, 120}, MakeColor(0, 0, 0, 200), true);
+//HUD at native window resolution (640x448)
+//background box
+    gfx.DrawNativeRect({8, 8, 130, 75}, MakeColor(0, 0, 0, 180), true);
     
-    // State text
-    const char* stateStr = "UNKNOWN";
-    SonicState state = sonic->GetState();
-    switch (state) {
-        case SonicState::Idle: stateStr = "IDLE"; break;
-        case SonicState::Walking: stateStr = "WALKING"; break;
-        case SonicState::Running: stateStr = "RUNNING"; break;
-        case SonicState::FullSpeed: stateStr = "FULLSPEED"; break;
-        case SonicState::Jumping: stateStr = "JUMPING"; break;
-        case SonicState::Rolling: stateStr = "ROLLING"; break;
-        case SonicState::Hurt: stateStr = "HURT"; break;
-        case SonicState::Dead: stateStr = "DEAD"; break;
-        default: break;
+//SCORE
+    gfx.DrawNativeText("SCORE", 12, 12, MakeColor(255, 255, 0));
+    char scoreStr[16];
+    snprintf(scoreStr, sizeof(scoreStr), "%06d", sonic->GetScore());
+    gfx.DrawNativeText(scoreStr, 70, 12, MakeColor(255, 255, 255));
+    
+//TIME
+    gfx.DrawNativeText("TIME", 12, 32, MakeColor(255, 255, 0));
+    int minutes = gameHUD.timeSeconds / 60;
+    int seconds = gameHUD.timeSeconds % 60;
+    char timeStr[16];
+    snprintf(timeStr, sizeof(timeStr), "%d:%02d", minutes, seconds);
+    gfx.DrawNativeText(timeStr, 70, 32, MakeColor(255, 255, 255));
+    
+//RINGS
+    int rings = sonic->GetRings();
+    Color ringColor = (rings == 0 && (GetSystemTime() / 250) % 2 == 0) 
+                     ? MakeColor(255, 0, 0) : MakeColor(255, 255, 0);
+    gfx.DrawNativeText("RINGS", 12, 52, ringColor);
+    char ringStr[16];
+    snprintf(ringStr, sizeof(ringStr), "%03d", rings);
+    gfx.DrawNativeText(ringStr, 70, 52, MakeColor(255, 255, 255));
+    
+//lives - bottom left (window coords) with Sonic icon
+    gfx.DrawNativeRect({8, gfx.GetNativeHeight() - 28, 50, 20}, MakeColor(0, 0, 0, 180), true);
+
+//draw Sonic life icon
+    auto miscBmp = assetsLoaded ? ResourceManager::Instance().GetMiscSheet() : nullptr;
+    if (miscBmp) {
+        FrameRect iconFrame = MiscSpriteConfig::GetIconLife();
+        sf::Sprite lifeIcon(miscBmp->GetTexture());
+        lifeIcon.setTextureRect(sf::IntRect(iconFrame.x, iconFrame.y, iconFrame.w, iconFrame.h));
+        lifeIcon.setScale(1.0f, 1.0f);  //original size (16x16)
+        gfx.DrawNativeSprite(lifeIcon, 11, gfx.GetNativeHeight() - 26);
     }
-    gfx.DrawText(stateStr, SCREEN_WIDTH - 190, 10, MakeColor(255, 255, 0));
+
+//draw lives count to the right of icon
+    char livesStr[16];
+    snprintf(livesStr, sizeof(livesStr), "x %d", sonic->GetLives());
+    gfx.DrawNativeText(livesStr, 30, gfx.GetNativeHeight() - 24, MakeColor(255, 255, 255));
+}
+
+void DrawNativeDebug() {
+    if (!sonic) return;
+    auto& gfx = GetGraphics();
     
-    // Position
-    char posStr[64];
+//debug panel at native resolution - top right (native coords)
+    int panelX = gfx.GetNativeWidth() - 145;
+    int panelH = godModeActive ? 110 : 90;  //taller if god mode active
+    gfx.DrawNativeRect({panelX, 8, 135, panelH}, MakeColor(0, 0, 0, 200), true);
+    
+    const char* stateStr = StateToString(sonic->GetState());
+    gfx.DrawNativeText(stateStr, panelX + 5, 12, MakeColor(255, 255, 0));
+    
+    char posStr[32];
     snprintf(posStr, sizeof(posStr), "X:%.0f Y:%.0f", sonic->GetX(), sonic->GetY());
-    gfx.DrawText(posStr, SCREEN_WIDTH - 190, 30, MakeColor(200, 200, 200));
+    gfx.DrawNativeText(posStr, panelX + 5, 32, MakeColor(200, 200, 200));
     
-    // Velocity
-    char velStr[64];
+    char velStr[32];
     snprintf(velStr, sizeof(velStr), "VX:%.1f VY:%.1f", sonic->GetVelX(), sonic->GetVelY());
-    gfx.DrawText(velStr, SCREEN_WIDTH - 190, 50, MakeColor(200, 200, 200));
+    gfx.DrawNativeText(velStr, panelX + 5, 52, MakeColor(200, 200, 200));
     
-    // Ground speed
-    char spdStr[64];
+    char spdStr[24];
     snprintf(spdStr, sizeof(spdStr), "Speed:%.2f", sonic->GetSpeed());
-    gfx.DrawText(spdStr, SCREEN_WIDTH - 190, 70, MakeColor(0, 255, 0));
+    gfx.DrawNativeText(spdStr, panelX + 5, 72, MakeColor(0, 255, 0));
     
-    // Grid toggle hint
-    gfx.DrawText("G=Grid F1=Debug", SCREEN_WIDTH - 190, 95, MakeColor(150, 150, 150));
+//god mode indicator
+    if (godModeActive) {
+        gfx.DrawNativeText("GOD MODE", panelX + 5, 92, MakeColor(255, 0, 0));
+    }
+}
+
+void DrawNativePauseMenu() {
+    auto& gfx = GetGraphics();
+
+//native coordinates are scaled based on current window size
+    int gameW = gfx.GetNativeWidth();   //virtualWidth * scale
+    int gameH = gfx.GetNativeHeight();  //virtualHeight * scale
+
+//pause box - centered in the native coordinate space
+    int boxW = 280;
+    int boxH = 220;
+    int boxX = (gameW - boxW) / 2;
+    int boxY = (gameH - boxH) / 2;
+    
+//background with double border
+    gfx.DrawNativeRect({boxX, boxY, boxW, boxH}, MakeColor(0, 40, 120, 245), true);
+    gfx.DrawNativeRect({boxX, boxY, boxW, boxH}, MakeColor(255, 215, 0), false);
+    gfx.DrawNativeRect({boxX + 3, boxY + 3, boxW - 6, boxH - 6}, MakeColor(255, 215, 0), false);
+    
+//title - centered
+    gfx.DrawNativeText("PAUSED", boxX + (boxW - 70) / 2, boxY + 20, MakeColor(255, 215, 0));
+    
+    const char* menuItems[] = {"CONTINUE", "RESTART", "QUIT"};
+    int buttonW = 200;
+    int buttonH = 35;
+    int buttonX = boxX + (boxW - buttonW) / 2;
+    int itemY = boxY + 60;
+    
+    for (int i = 0; i < PAUSE_MENU_ITEMS; ++i) {
+        Color bgColor = (i == pauseMenuSelection) ? MakeColor(255, 215, 0) : MakeColor(60, 60, 120);
+        Color textColor = (i == pauseMenuSelection) ? MakeColor(0, 0, 80) : MakeColor(255, 255, 255);
+        
+        gfx.DrawNativeRect({buttonX, itemY, buttonW, buttonH}, bgColor, true);
+        gfx.DrawNativeRect({buttonX, itemY, buttonW, buttonH}, MakeColor(255, 255, 255), false);
+        
+        if (i == pauseMenuSelection) {
+            gfx.DrawNativeText(">", buttonX - 18, itemY + 10, MakeColor(255, 255, 0));
+        }
+        
+//center text in button
+        int textX = buttonX + (buttonW - 80) / 2;
+        gfx.DrawNativeText(menuItems[i], textX, itemY + 10, textColor);
+        itemY += 45;
+    }
+    
+    gfx.DrawNativeText("ENTER = Select", boxX + (boxW - 130) / 2, boxY + boxH - 25, MakeColor(180, 180, 180));
+}
+
+void DrawLevelCompleteScreen() {
+    auto& gfx = GetGraphics();
+
+//native coordinates are scaled based on current window size
+    int centerX = gfx.GetNativeWidth() / 2;
+    int centerY = gfx.GetNativeHeight() / 2;
+
+//level complete box - fixed dimensions for better proportions
+    int boxW = 480;
+    int boxH = 400;
+    int boxX = centerX - boxW / 2;
+    int boxY = centerY - boxH / 2;
+    
+//background with triple border
+    gfx.DrawNativeRect({boxX, boxY, boxW, boxH}, MakeColor(0, 40, 120, 250), true);
+    gfx.DrawNativeRect({boxX, boxY, boxW, boxH}, MakeColor(255, 215, 0), false);
+    gfx.DrawNativeRect({boxX + 3, boxY + 3, boxW - 6, boxH - 6}, MakeColor(255, 215, 0), false);
+    gfx.DrawNativeRect({boxX + 6, boxY + 6, boxW - 12, boxH - 12}, MakeColor(100, 150, 255), false);
+    
+//title - centered
+    gfx.DrawNativeText("LEVEL COMPLETE!", boxX + (boxW - 160) / 2, boxY + 25, MakeColor(255, 215, 0));
+    gfx.DrawNativeText("CONGRATULATIONS!", boxX + (boxW - 170) / 2, boxY + 50, MakeColor(255, 255, 255));
+    
+//stats - centered
+    if (sonic) {
+        int statsX = boxX + (boxW - 140) / 2;
+        
+        char scoreStr[32];
+        snprintf(scoreStr, sizeof(scoreStr), "SCORE: %d", sonic->GetScore());
+        gfx.DrawNativeText(scoreStr, statsX, boxY + 90, MakeColor(255, 255, 255));
+        
+        char ringStr[32];
+        snprintf(ringStr, sizeof(ringStr), "RINGS: %d", sonic->GetRings());
+        gfx.DrawNativeText(ringStr, statsX, boxY + 115, MakeColor(255, 255, 255));
+        
+        char timeStr[32];
+        int minutes = gameHUD.timeSeconds / 60;
+        int seconds = gameHUD.timeSeconds % 60;
+        snprintf(timeStr, sizeof(timeStr), "TIME: %d:%02d", minutes, seconds);
+        gfx.DrawNativeText(timeStr, statsX, boxY + 140, MakeColor(255, 255, 255));
+        
+//ring bonus - highlighted
+        char bonusStr[32];
+        snprintf(bonusStr, sizeof(bonusStr), "RING BONUS: %d", sonic->GetRings() * 100);
+        gfx.DrawNativeText(bonusStr, statsX - 25, boxY + 170, MakeColor(255, 215, 0));
+    }
+    
+//menu options - bigger buttons, centered
+    const char* menuItems[] = {"RESTART LEVEL", "LAST CHECKPOINT"};
+    int buttonW = 240;
+    int buttonH = 38;
+    int buttonX = boxX + (boxW - buttonW) / 2;
+    int itemY = boxY + 210;
+    
+    for (int i = 0; i < 2; ++i) {
+        Color bgColor = (i == levelCompleteSelection) ? MakeColor(255, 215, 0) : MakeColor(60, 60, 120);
+        Color textColor = (i == levelCompleteSelection) ? MakeColor(0, 0, 80) : MakeColor(255, 255, 255);
+        
+        gfx.DrawNativeRect({buttonX, itemY, buttonW, buttonH}, bgColor, true);
+        gfx.DrawNativeRect({buttonX, itemY, buttonW, buttonH}, MakeColor(255, 255, 255), false);
+        
+        if (i == levelCompleteSelection) {
+            gfx.DrawNativeText(">", buttonX - 18, itemY + 11, MakeColor(255, 255, 0));
+        }
+        
+//center text in button
+        int textX = buttonX + (buttonW - 140) / 2;
+        gfx.DrawNativeText(menuItems[i], textX, itemY + 11, textColor);
+        itemY += 48;
+    }
+    
+    gfx.DrawNativeText("UP/DOWN + ENTER", boxX + (boxW - 150) / 2, boxY + boxH - 22, MakeColor(180, 180, 180));
 }
 
 void RenderTitleScreen() {
     auto& gfx = GetGraphics();
     
-    // Blue gradient background (Sonic sky)
-    gfx.DrawRect({0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, MakeColor(0, 100, 200), true);
-    gfx.DrawRect({0, 0, SCREEN_WIDTH, 100}, MakeColor(0, 60, 160), true);
+//clear with blue background (will be scaled)
+    gfx.DrawRect({0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, MakeColor(0, 80, 180), true);
     
-    // Title box
-    int boxX = SCREEN_WIDTH/2 - 250;
-    int boxY = 40;
-    int boxW = 500;
-    int boxH = 120;
-    
-    gfx.DrawRect({boxX, boxY, boxW, boxH}, MakeColor(0, 0, 80, 230), true);
-    gfx.DrawRect({boxX, boxY, boxW, boxH}, MakeColor(255, 200, 0), false);
-    gfx.DrawRect({boxX + 2, boxY + 2, boxW - 4, boxH - 4}, MakeColor(255, 200, 0), false);
-    
-    // "SONIC THE HEDGEHOG" title
-    gfx.DrawText("SONIC THE HEDGEHOG", boxX + 120, boxY + 30, MakeColor(255, 215, 0));
-    
-    // "THE CSD CHRONICLES" subtitle  
-    gfx.DrawText("The CSD Chronicles", boxX + 160, boxY + 70, MakeColor(200, 200, 255));
-    
-    // University info box
-    int infoX = SCREEN_WIDTH/2 - 280;
-    int infoY = 180;
-    int infoW = 560;
-    int infoH = 160;
-    
-    gfx.DrawRect({infoX, infoY, infoW, infoH}, MakeColor(0, 0, 0, 200), true);
-    gfx.DrawRect({infoX, infoY, infoW, infoH}, MakeColor(100, 100, 100), false);
-    
-    // University text - exactly as PDF requires (Page 28)
-    gfx.DrawText("University of Crete", infoX + 190, infoY + 15, MakeColor(255, 255, 255));
-    gfx.DrawText("Department of Computer Science", infoX + 130, infoY + 40, MakeColor(255, 255, 255));
-    gfx.DrawText("CS-454. Development of Intelligent Interfaces and Games", 
-                 infoX + 50, infoY + 70, MakeColor(200, 200, 200));
-    gfx.DrawText("Term Project, Fall Semester 2024", infoX + 140, infoY + 100, MakeColor(200, 200, 200));
-    
-    // Team names - YOU SHOULD UPDATE THIS WITH YOUR ACTUAL NAMES
-    gfx.DrawText("TEAM: [YOUR NAME HERE]", infoX + 170, infoY + 130, MakeColor(255, 255, 0));
-    
-    // Sonic icon (blue rectangle placeholder)
-    gfx.DrawRect({SCREEN_WIDTH/2 - 30, 360, 60, 80}, MakeColor(0, 100, 255), true);
-    gfx.DrawRect({SCREEN_WIDTH/2 - 25, 370, 50, 30}, MakeColor(255, 200, 150), true); // Face
-    gfx.DrawRect({SCREEN_WIDTH/2 - 15, 355, 30, 20}, MakeColor(0, 50, 200), true); // Spikes
-    
-    // "Press SPACE to Start" prompt
-    int promptY = 450;
-    static uint64_t lastBlink = 0;
-    static bool showPrompt = true;
-    uint64_t now = GetSystemTime();
-    if (now - lastBlink > 500) {
-        showPrompt = !showPrompt;
-        lastBlink = now;
-    }
-    
-    if (showPrompt) {
-        gfx.DrawText("PRESS ENTER TO START", SCREEN_WIDTH/2 - 90, promptY, MakeColor(255, 255, 0));
-    }
-    
+//present the blue background
     gfx.Present();
+    
+//now draw title text at native resolution (scaled)
+//all UI centered in window
+    int centerX = gfx.GetNativeWidth() / 2;
+    int centerY = gfx.GetNativeHeight() / 2;
+
+//title box - fixed width for better proportions
+    int titleW = 500;
+    int titleH = 90;
+    int titleX = centerX - titleW / 2;
+    int titleY = centerY - 180;
+
+    gfx.DrawNativeRect({titleX, titleY, titleW, titleH}, MakeColor(0, 0, 60, 230), true);
+    gfx.DrawNativeRect({titleX, titleY, titleW, titleH}, MakeColor(255, 200, 0), false);
+    gfx.DrawNativeText("SONIC THE HEDGEHOG", centerX - 95, titleY + 20, MakeColor(255, 215, 0));
+    gfx.DrawNativeText("The CSD Chronicles", centerX - 80, titleY + 55, MakeColor(200, 200, 255));
+
+//info box
+    int infoY = titleY + titleH + 20;
+    int infoH = 100;
+    gfx.DrawNativeRect({titleX, infoY, titleW, infoH}, MakeColor(0, 0, 0, 200), true);
+    gfx.DrawNativeText("University of Crete", centerX - 80, infoY + 20, MakeColor(255, 255, 255));
+    gfx.DrawNativeText("CS-454 Fall 2024", centerX - 70, infoY + 50, MakeColor(200, 200, 200));
+    gfx.DrawNativeText("NIKOLAOS KANAKOUSAKIS", centerX - 100, infoY + 75, MakeColor(255, 255, 0));
+
+//menu buttons
+    int menuW = 320;
+    int menuX = centerX - menuW / 2;
+    int menuY = infoY + infoH + 25;
+    
+    int buttonH = 50;
+    int buttonSpacing = 18;
+
+    bool startSelected = (titleMenuSelection == 0);
+    gfx.DrawNativeRect({menuX, menuY, menuW, buttonH}, startSelected ? MakeColor(0, 100, 200) : MakeColor(0, 0, 80, 200), true);
+    gfx.DrawNativeRect({menuX, menuY, menuW, buttonH}, startSelected ? MakeColor(255, 255, 0) : MakeColor(100, 100, 100), false);
+    gfx.DrawNativeText("START GAME", centerX - 50, menuY + 13, startSelected ? MakeColor(255, 255, 0) : MakeColor(200, 200, 200));
+
+    bool soundSelected = (titleMenuSelection == 1);
+    int soundY = menuY + buttonH + buttonSpacing;
+    gfx.DrawNativeRect({menuX, soundY, menuW, buttonH}, soundSelected ? MakeColor(0, 100, 200) : MakeColor(0, 0, 80, 200), true);
+    gfx.DrawNativeRect({menuX, soundY, menuW, buttonH}, soundSelected ? MakeColor(255, 255, 0) : MakeColor(100, 100, 100), false);
+    char soundText[32];
+    snprintf(soundText, sizeof(soundText), "SOUND: %s", soundEnabled ? "ON" : "OFF");
+    gfx.DrawNativeText(soundText, centerX - 45, soundY + 13, soundSelected ? MakeColor(255, 255, 0) : MakeColor(200, 200, 200));
+
+//instructions - positioned at bottom of screen
+    int instructY = centerY + 200;  //below centered content
+    gfx.DrawNativeText("UP/DOWN + ENTER", centerX - 70, instructY, MakeColor(150, 150, 150));
+    
+    gfx.FinalDisplay();
+}
+
+void RenderGameOverScreen() {
+    auto& gfx = GetGraphics();
+    
+//dark overlay (scaled)
+    gfx.DrawRect({0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, MakeColor(0, 0, 0, 200), true);
+    gfx.Present();
+    
+//draw at native resolution (scaled)
+    int centerX = gfx.GetNativeWidth() / 2;
+    int centerY = gfx.GetNativeHeight() / 2;
+    int boxW = 380;  //fixed width for better proportions
+    int boxH = 240;  //fixed height
+    int boxX = centerX - boxW / 2;
+    int boxY = centerY - boxH / 2;
+    
+    gfx.DrawNativeRect({boxX, boxY, boxW, boxH}, MakeColor(100, 0, 0, 240), true);
+    gfx.DrawNativeRect({boxX, boxY, boxW, boxH}, MakeColor(255, 0, 0), false);
+
+    gfx.DrawNativeText("GAME OVER", centerX - 45, boxY + boxH / 6, MakeColor(255, 100, 100));
+
+    char scoreStr[32];
+    snprintf(scoreStr, sizeof(scoreStr), "SCORE: %d", gameHUD.score);
+    gfx.DrawNativeText(scoreStr, centerX - 50, centerY - 20, MakeColor(255, 255, 0));
+
+    int minutes = gameHUD.timeSeconds / 60;
+    int seconds = gameHUD.timeSeconds % 60;
+    char timeStr[32];
+    snprintf(timeStr, sizeof(timeStr), "TIME: %d:%02d", minutes, seconds);
+    gfx.DrawNativeText(timeStr, centerX - 50, centerY + 10, MakeColor(255, 215, 0));
+
+    uint64_t now = GetSystemTime();
+    bool inputReady = (gameOverStartTime > 0 && now - gameOverStartTime > 1000);
+
+    if (inputReady && (now / 500) % 2 == 0) {
+        gfx.DrawNativeText("ENTER = RESTART", centerX - 70, boxY + boxH - 60, MakeColor(255, 255, 0));
+    }
+    gfx.DrawNativeText("Q = QUIT", centerX - 35, boxY + boxH - 30, MakeColor(150, 150, 150));
+    
+    gfx.FinalDisplay();
 }
 
 void Render() {
-    // Handle different screens
+    static bool shownTerrainInfo = false;  //only show once
+    auto& gfx = GetGraphics();
+
+//CRITICAL: Clear backbuffer at start of EVERY frame to prevent ghosting
+    gfx.Clear(MakeColor(0, 156, 252));  //clear with sky blue
+
+//handle different screens
     if (currentScreen == GameScreen::Title) {
+        gfx.Clear();  //title screen uses different color
         RenderTitleScreen();
         return;
     }
-    
-    auto& gfx = GetGraphics();
-    
-    // Draw parallax background
+
+    if (currentScreen == GameScreen::GameOver) {
+        gfx.Clear();  //game over overlays on game state
+        RenderGameOverScreen();
+        return;
+    }
+
+//draw parallax background (will overdraw the clear color)
     parallaxManager.Draw(gfx, viewWindow.x, viewWindow.y, SCREEN_WIDTH, SCREEN_HEIGHT);
     
-    // Draw terrain using tileset if available
-    if (actionLayer && actionLayer->GetTileSet()) {
+//draw terrain - prefer terrain image over tileset
+    extern engine::BitmapPtr terrainImage;
+    
+    if (terrainImage) {
+//draw portion of terrain image matching the view window
+        Rect srcRect = {viewWindow.x, viewWindow.y, SCREEN_WIDTH, SCREEN_HEIGHT};
+        gfx.DrawTexture(terrainImage->GetTexture(), srcRect, {0, 0});
+    } else if (actionLayer && actionLayer->GetTileSet()) {
+//FALLBACK: Using tile-based rendering (will show borders!)
+        if (!shownTerrainInfo) {
+            std::cerr << "⚠ WARNING: Using tile-based rendering (tiles have borders!)" << std::endl;
+            std::cerr << "⚠ sonic_terrain.png not loaded - you'll see magenta lines" << std::endl;
+            shownTerrainInfo = true;
+        }
+        
         actionLayer->SetViewWindow(viewWindow);
         actionLayer->Display({0, 0, SCREEN_WIDTH, SCREEN_HEIGHT});
+    } else {
+        if (!shownTerrainInfo) {
+            std::cerr << "✗ ERROR: No terrain rendering available!" << std::endl;
+            shownTerrainInfo = true;
+        }
     }
     
-    // Draw grid overlay ON TOP of tiles when enabled (G key)
+//draw grid overlay ON TOP of tiles when enabled (G key)
     if (showGrid) {
         DrawGridOverlay();
     }
     
-    // Draw game objects
+//draw game objects (order matters for layering)
     DrawSprings();
-    DrawSpikes();
     DrawCheckpoints();
-    DrawMonitors();
+    DrawFlowers();  //background decorations first
+    DrawMonitors();  //powerups
+    DrawSpikes();  //spikes on top of flowers and powerups
+    DrawBigRings();
     
-    // Draw rings and enemies
+//draw rings and enemies
     auto* ringFilm = assetsLoaded ? ResourceManager::Instance().GetFilm("ring") : nullptr;
     auto* ringCollectFilm = assetsLoaded ? ResourceManager::Instance().GetFilm("ring_collect") : nullptr;
-    ringManager.Render(viewWindow, ringFilm, ringCollectFilm);
+    ringManager.Render(viewWindow, ringFilm, ringCollectFilm, SPRITE_SCALE);
     enemyManager.Render(viewWindow);
-    animalManager.Render(viewWindow);
+    AnimalManager::Instance().Render(viewWindow);
     
-    // Draw player
+//draw player
     DrawSonicSprite();
     
-    // Pause overlay
+//pause darkening (will be drawn native after Present)
     if (gamePaused) {
         gfx.DrawRect({0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, MakeColor(0, 0, 0, 128), true);
-        
-        // Pause menu box
-        int menuX = SCREEN_WIDTH/2 - 120;
-        int menuY = SCREEN_HEIGHT/2 - 100;
-        int menuW = 240;
-        int menuH = 200;
-        
-        gfx.DrawRect({menuX, menuY, menuW, menuH}, MakeColor(0, 0, 80, 240), true);
-        gfx.DrawRect({menuX, menuY, menuW, menuH}, MakeColor(255, 215, 0), false);
-        gfx.DrawRect({menuX + 2, menuY + 2, menuW - 4, menuH - 4}, MakeColor(255, 215, 0), false);
-        
-        // "PAUSED" title
-        gfx.DrawText("PAUSED", menuX + 85, menuY + 20, MakeColor(255, 215, 0));
-        
-        // Menu options with selection highlight
-        const char* menuItems[] = {"CONTINUE", "RESTART", "QUIT"};
-        int itemY = menuY + 60;
-        
-        for (int i = 0; i < PAUSE_MENU_ITEMS; ++i) {
-            Color bgColor = (i == pauseMenuSelection) ? MakeColor(255, 215, 0) : MakeColor(60, 60, 100);
-            Color textColor = (i == pauseMenuSelection) ? MakeColor(0, 0, 80) : MakeColor(255, 255, 255);
-            
-            // Draw option background
-            gfx.DrawRect({menuX + 40, itemY, 160, 28}, bgColor, true);
-            gfx.DrawRect({menuX + 40, itemY, 160, 28}, MakeColor(255, 215, 0), false);
-            
-            // Draw selection arrow
-            if (i == pauseMenuSelection) {
-                gfx.DrawText(">", menuX + 20, itemY + 5, MakeColor(255, 255, 0));
-            }
-            
-            // Draw option text
-            int textOffset = (i == 0) ? 45 : (i == 1) ? 50 : 65;
-            gfx.DrawText(menuItems[i], menuX + textOffset, itemY + 5, textColor);
-            
-            itemY += 38;
-        }
-        
-        // Instructions
-        gfx.DrawText("UP/DOWN: Select  ENTER: Confirm", menuX + 15, menuY + 175, MakeColor(150, 150, 150));
     }
-    
-    // Game Over screen - also set state
-    if (gameHUD.IsGameOver()) {
-        currentScreen = GameScreen::GameOver;
-        
-        gfx.DrawRect({0, 0, SCREEN_WIDTH, SCREEN_HEIGHT}, MakeColor(0, 0, 0, 200), true);
-        
-        int boxX = SCREEN_WIDTH/2 - 150;
-        int boxY = SCREEN_HEIGHT/2 - 120;
-        int boxW = 300;
-        int boxH = 240;
-        
-        // Red "GAME OVER" box
-        gfx.DrawRect({boxX, boxY, boxW, boxH}, MakeColor(100, 0, 0, 240), true);
-        gfx.DrawRect({boxX, boxY, boxW, boxH}, MakeColor(255, 0, 0), false);
-        gfx.DrawRect({boxX + 3, boxY + 3, boxW - 6, boxH - 6}, MakeColor(255, 0, 0), false);
-        
-        // "GAME OVER" title
-        gfx.DrawText("GAME OVER", boxX + 95, boxY + 30, MakeColor(255, 100, 100));
-        
-        // Final score display
-        char scoreStr[32];
-        snprintf(scoreStr, sizeof(scoreStr), "%d", gameHUD.score);
-        gfx.DrawText("FINAL SCORE:", boxX + 50, boxY + 80, MakeColor(255, 255, 0));
-        gfx.DrawText(scoreStr, boxX + 180, boxY + 80, MakeColor(255, 255, 255));
-        
-        // Time display
-        int minutes = gameHUD.timeSeconds / 60;
-        int seconds = gameHUD.timeSeconds % 60;
-        char timeStr[32];
-        snprintf(timeStr, sizeof(timeStr), "%d:%02d", minutes, seconds);
-        gfx.DrawText("TIME:", boxX + 50, boxY + 110, MakeColor(255, 215, 0));
-        gfx.DrawText(timeStr, boxX + 180, boxY + 110, MakeColor(255, 255, 255));
-        
-        // Prompt to continue
-        static uint64_t lastBlink = 0;
-        static bool showPrompt = true;
-        uint64_t now = GetSystemTime();
-        if (now - lastBlink > 500) {
-            showPrompt = !showPrompt;
-            lastBlink = now;
-        }
-        if (showPrompt) {
-            gfx.DrawText("PRESS SPACE TO RESTART", boxX + 45, boxY + 160, MakeColor(255, 255, 0));
-        }
-        
-        gfx.DrawText("PRESS Q TO QUIT", boxX + 85, boxY + 195, MakeColor(150, 150, 150));
-    }
-    
-    // Draw HUD
-    gameHUD.Draw(gfx, viewWindow.x, viewWindow.y);
-    DrawDebugInfo();
-    
+
+//present game graphics (scaled from virtual res to window)
     gfx.Present();
+    
+//draw HUD at native resolution (crisp, not scaled)
+    DrawNativeHUD();
+    if (showDebug) DrawNativeDebug();
+    
+//draw pause menu at native resolution if paused
+    if (gamePaused) {
+        DrawNativePauseMenu();
+    }
+    
+//draw level complete screen
+    if (levelComplete) {
+        DrawLevelCompleteScreen();
+    }
+    
+    gfx.FinalDisplay();
 }
 
-// Load collision grid from CSV and expand to grid elements
-bool LoadGridFromCSV(const std::string& path, GridLayer*& grid, int tilesX, int tilesY) {
-    std::ifstream file(path);
-    if (!file.is_open()) return false;
+//note: Collision grid loading moved to GridLayer::LoadCSV
+
+//helper function to find ground Y at a given X position by sampling the grid
+//returns the Y pixel position of the ground surface, or -1 if no ground (pit)
+int FindGroundY(int pixelX) {
+    if (!gridLayer) return 1200;  //fallback near bottom
     
-    // The CSV is at tile level (1 cell per tile)
-    // We need to expand each cell to GRID_BLOCK_ROWS x GRID_BLOCK_COLUMNS grid elements
-    Dim gridRows = static_cast<Dim>(tilesY * GRID_BLOCK_ROWS);
-    Dim gridCols = static_cast<Dim>(tilesX * GRID_BLOCK_COLUMNS);
+    int gridCol = pixelX / GRID_ELEMENT_WIDTH;
+    if (gridCol < 0 || gridCol >= static_cast<int>(gridLayer->GetCols())) return -1;
     
-    grid = new GridLayer(gridRows, gridCols);
-    
-    std::string line;
-    int tileRow = 0;
-    
-    while (std::getline(file, line) && tileRow < tilesY) {
-        std::stringstream ss(line);
-        std::string cell;
-        int tileCol = 0;
-        
-        while (std::getline(ss, cell, ',') && tileCol < tilesX) {
-            // Trim whitespace
-            size_t start = cell.find_first_not_of(" \t\r\n");
-            size_t end = cell.find_last_not_of(" \t\r\n");
-            if (start != std::string::npos) {
-                cell = cell.substr(start, end - start + 1);
+//debug: print first few non-empty tiles in this column
+    static bool debugPrinted = false;
+    if (!debugPrinted && pixelX == 100) {
+        std::cout << "DEBUG FindGroundY at X=" << pixelX << " (col " << gridCol << "):" << std::endl;
+        for (int row = 0; row < static_cast<int>(gridLayer->GetRows()); ++row) {
+            GridIndex tile = gridLayer->GetTile(static_cast<Dim>(gridCol), static_cast<Dim>(row));
+            if (tile != GRID_EMPTY) {
+                std::cout << "  Row " << row << " (Y=" << (row * GRID_ELEMENT_HEIGHT) << "): tile=" << static_cast<int>(tile) << std::endl;
             }
-            
-            if (!cell.empty()) {
-                int val = std::stoi(cell);
-                // CSV format: 0=solid, 1=platform (top solid), 2=empty
-                GridIndex gridVal = GRID_EMPTY;
-                if (val == 0) gridVal = GRID_SOLID;
-                else if (val == 1) gridVal = GRID_TOP_SOLID;
-                // else: 2 = empty (default)
-                
-                // Expand this tile cell to GRID_BLOCK_ROWS x GRID_BLOCK_COLUMNS grid elements
-                int baseRow = tileRow * GRID_BLOCK_ROWS;
-                int baseCol = tileCol * GRID_BLOCK_COLUMNS;
-                
-                for (int gr = 0; gr < GRID_BLOCK_ROWS; ++gr) {
-                    for (int gc = 0; gc < GRID_BLOCK_COLUMNS; ++gc) {
-                        grid->SetTile(
-                            static_cast<Dim>(baseCol + gc),
-                            static_cast<Dim>(baseRow + gr),
-                            gridVal
-                        );
-                    }
-                }
-            }
-            tileCol++;
         }
-        tileRow++;
+        debugPrinted = true;
     }
     
-    std::cout << "Loaded grid from CSV: " << path << " (" << gridCols << "x" << gridRows << " elements)" << std::endl;
-    return true;
+//scan from top to find first ground tile (solid, platform, or slope)
+    for (int row = 0; row < static_cast<int>(gridLayer->GetRows()); ++row) {
+        GridIndex tile = gridLayer->GetTile(static_cast<Dim>(gridCol), static_cast<Dim>(row));
+//new collision types: GRID_SOLID, GRID_PLATFORM, GRID_SLOPE are all ground
+        if (tile == GRID_SOLID || tile == GRID_PLATFORM || tile == GRID_SLOPE) {
+            return row * GRID_ELEMENT_HEIGHT;
+        }
+    }
+    return -1;  //no ground found (pit)
 }
 
-// Places all game objects - called on level start and reset
-void PlaceGameObjects() {
-    // Add rings - ground is at y=1664, rings float above
-    for (int i = 0; i < 10; ++i) {
-        ringManager.AddRing(300.0f + i * 40, 1630.0f);  // Just above ground
+//places all game objects on the terrain
+//uses FindGroundY to place objects at correct heights based on actual collision grid
+void PlaceGameObjects(bool includeMonitorsAndLevelObjects) {
+//NEW TERRAIN: 9984×1536 pixels (39 tiles × 6 tiles at 256×256)
+//grid: 1248×192 cells at 8×8 pixels per cell
+//ground level varies significantly - use FindGroundY for placement
+
+    std::cout << "Placing game objects (monitors/level objects=" << (includeMonitorsAndLevelObjects ? "yes" : "no") << ")..." << std::endl;
+    
+//=== RINGS ===
+//ring trails along ground - place 20px above ground level
+    auto placeRingTrail = [](float startX, int count, float spacing) {
+        for (int i = 0; i < count; ++i) {
+            float x = startX + i * spacing;
+            int groundY = FindGroundY(static_cast<int>(x));
+            if (groundY > 0) {
+                ringManager.AddRing(x, static_cast<float>(groundY - 30));
+            }
+        }
+    };
+    
+    placeRingTrail(150.0f, 8, 40.0f);
+    
+//trail 2: After first hill
+    placeRingTrail(550.0f, 6, 35.0f);
+    
+//trail 3: Mid-level section
+    placeRingTrail(900.0f, 5, 40.0f);
+    
+//trail 4: Before loop area
+    placeRingTrail(1350.0f, 5, 40.0f);
+    
+//trail 5: After pit
+    placeRingTrail(1600.0f, 8, 45.0f);
+    
+//trail 6: High platform area
+    placeRingTrail(2400.0f, 6, 40.0f);
+    
+//trail 7: Late section (lower ground)
+    placeRingTrail(3400.0f, 8, 50.0f);
+    
+//trail 8: Near end
+    placeRingTrail(4200.0f, 6, 45.0f);
+    
+//vertical ring arrangements (floating - for jumps)
+    int groundAt1000 = FindGroundY(1000);
+    if (groundAt1000 > 0) {
+        for (int i = 0; i < 4; ++i) {
+            ringManager.AddRing(1000.0f, static_cast<float>(groundAt1000 - 50 - i * 35));
+        }
     }
-    for (int i = 0; i < 5; ++i) {
-        ringManager.AddRing(800.0f + i * 35, 1200.0f);  // On platform
+    
+    int groundAt2800 = FindGroundY(2800);
+    if (groundAt2800 > 0) {
+        for (int i = 0; i < 3; ++i) {
+            ringManager.AddRing(2800.0f, static_cast<float>(groundAt2800 - 50 - i * 35));
+        }
     }
-    for (int i = 0; i < 5; ++i) {
-        ringManager.AddRing(2600.0f + i * 35, 1200.0f);
+    
+//=== ENEMIES ===
+//place enemies ON ground (their Y = groundY - enemyHeight)
+    auto placeMotobug = [](float x) {
+        int groundY = FindGroundY(static_cast<int>(x));
+        if (groundY > 0) {
+            enemyManager.AddMotobug(x, static_cast<float>(groundY - 32));
+        }
+    };
+    
+    auto placeCrabmeat = [](float x) {
+        int groundY = FindGroundY(static_cast<int>(x));
+        if (groundY > 0) {
+            enemyManager.AddCrabmeat(x, static_cast<float>(groundY - 32));
+        }
+    };
+    
+//motobugs
+    placeMotobug(400.0f);
+    placeMotobug(750.0f);
+    placeMotobug(1500.0f);
+    placeMotobug(2000.0f);
+    placeMotobug(2600.0f);
+    placeMotobug(3600.0f);
+    placeMotobug(4300.0f);
+    
+//crabmeat
+    placeCrabmeat(600.0f);
+    placeCrabmeat(1100.0f);
+    placeCrabmeat(2300.0f);
+    placeCrabmeat(3200.0f);
+    placeCrabmeat(4000.0f);
+    
+//buzzBombers (flying - place 150px above ground)
+    auto placeBuzzBomber = [](float x, float patrolRange) {
+        int groundY = FindGroundY(static_cast<int>(x));
+        if (groundY > 0) {
+            enemyManager.AddBuzzBomber(x, static_cast<float>(groundY - 150), patrolRange);
+        }
+    };
+    
+    placeBuzzBomber(500.0f, 200.0f);
+    placeBuzzBomber(1200.0f, 250.0f);
+    placeBuzzBomber(1900.0f, 200.0f);
+    placeBuzzBomber(2900.0f, 220.0f);
+    placeBuzzBomber(3800.0f, 180.0f);
+    
+//batbrain (hanging enemies - 100px above ground)
+    auto placeBatbrain = [](float x) {
+        int groundY = FindGroundY(static_cast<int>(x));
+        if (groundY > 0) {
+            enemyManager.AddBatbrain(x, static_cast<float>(groundY - 120));
+        }
+    };
+    
+    placeBatbrain(850.0f);
+    placeBatbrain(1700.0f);
+    placeBatbrain(2500.0f);
+    
+//masher (fish enemies - jump from water pits)
+//ONLY spawn in actual water areas (Y < 1300)
+//y > 1300 is void/death zone, not water!
+    
+//upper water pit mashers (if these are actual water pits)
+//only add if Y < 1300
+    if (1050.0f < 1300.0f) {
+        enemyManager.AddMasher(2400.0f, 1050.0f);
+        enemyManager.AddMasher(2480.0f, 1050.0f);
+        
+        enemyManager.AddMasher(7780.0f, 1050.0f);
+        enemyManager.AddMasher(7860.0f, 1050.0f);
     }
-    for (int i = 0; i < 3; ++i) {
-        ringManager.AddRing(1600.0f + i * 40, 900.0f);
+    
+//NO mashers in the void (Y >= 1300) - that's death zone not water!
+    
+    std::cout << "  Added Masher enemies in water areas (Y < 1300 only)" << std::endl;
+
+//=== SPRINGS, SPIKES, CHECKPOINTS, MONITORS ===
+//only place these on full level reset, not on checkpoint respawn
+    if (includeMonitorsAndLevelObjects) {
+//=== SPRINGS ===
+    auto placeSpring = [](float x, SpringDirection dir, bool yellow) {
+        int groundY = FindGroundY(static_cast<int>(x));
+        if (groundY > 0) {
+//springs sit on ground - use smaller offset so they don't float
+            springManager.Add(x, static_cast<float>(groundY - 16), dir, yellow);
+        }
+    };
+    
+    placeSpring(300.0f, SpringDirection::Up, true);
+    placeSpring(800.0f, SpringDirection::Up, true);
+    placeSpring(1400.0f, SpringDirection::DiagonalUpRight, true);
+    placeSpring(1860.0f, SpringDirection::Up, false);  //red spring (moved left)
+    placeSpring(2700.0f, SpringDirection::Up, true);
+
+    //spring at 3450 - manually placed lower
+    {
+        int groundY = FindGroundY(3450);
+        if (groundY > 0) {
+            springManager.Add(3450.0f, static_cast<float>(groundY - 12), SpringDirection::Up, true);
+        }
     }
-    ringManager.AddRing(2850.0f, 1630.0f);
-    ringManager.AddRing(2900.0f, 1630.0f);
+
+    placeSpring(8440.0f, SpringDirection::Up, true);  //dead end area - helps get up
     
-    // Add enemies - ground surface is at y=1664
-    // Enemies stand ON ground, so position = 1664 - enemy_height
-    enemyManager.AddMotobug(600.0f, 1632.0f);    // 32px tall
-    enemyManager.AddMotobug(1800.0f, 1632.0f);
-    enemyManager.AddMotobug(4000.0f, 1632.0f);
-    enemyManager.AddCrabmeat(1200.0f, 1632.0f);
-    enemyManager.AddCrabmeat(3500.0f, 1632.0f);
+//=== SPIKES ===
+//only place spikes on very flat ground (check multiple points with strict tolerance)
+    auto placeSpikesOnFlat = [](float x) {
+//check 5 points across a wider area for flatness
+        int groundY1 = FindGroundY(static_cast<int>(x - 32));
+        int groundY2 = FindGroundY(static_cast<int>(x));
+        int groundY3 = FindGroundY(static_cast<int>(x + 32));
+        int groundY4 = FindGroundY(static_cast<int>(x + 64));
+        int groundY5 = FindGroundY(static_cast<int>(x - 64));
+        
+//all points must exist and be within 4 pixels (very flat)
+        if (groundY1 > 0 && groundY2 > 0 && groundY3 > 0 && groundY4 > 0 && groundY5 > 0) {
+            int minY = std::min({groundY1, groundY2, groundY3, groundY4, groundY5});
+            int maxY = std::max({groundY1, groundY2, groundY3, groundY4, groundY5});
+            if ((maxY - minY) <= 4) {  //very strict - only truly flat ground
+                spikeManager.Add(x, static_cast<float>(groundY2 - 32), SpikeDirection::Up);
+                spikeManager.Add(x + 32.0f, static_cast<float>(groundY2 - 32), SpikeDirection::Up);
+                std::cout << "Placed spikes at X:" << x << " Y:" << (groundY2 - 32) << std::endl;
+            }
+        }
+    };
     
-    // Add BuzzBombers (flying enemies)
-    enemyManager.AddBuzzBomber(700.0f, 1500.0f, 300.0f);   // Patrols 300px range
-    enemyManager.AddBuzzBomber(2000.0f, 1400.0f, 250.0f);
-    enemyManager.AddBuzzBomber(3800.0f, 1450.0f, 200.0f);
+//try many positions - only truly flat ones will get spikes
+    for (float x = 500.0f; x < 9500.0f; x += 800.0f) {
+        // Skip area near whirl circle (around x=5260)
+        if (x >= 5000.0f && x <= 5500.0f) continue;
+        placeSpikesOnFlat(x);
+    }
     
-    // Add Mashers (jumping piranha enemies) - placed at pit edges
-    enemyManager.AddMasher(2900.0f, 1700.0f, 1500);  // Jump every 1.5 seconds (below ground in pit)
-    enemyManager.AddMasher(5700.0f, 1700.0f, 2000);  // Jump every 2 seconds
+//=== CHECKPOINTS ===
+    int spawnGroundY = FindGroundY(100);
+    float spawnY = (spawnGroundY > 0) ? static_cast<float>(spawnGroundY - 50) : 1100.0f;
+    checkpointManager.SetInitialSpawn(100.0f, spawnY);
+    std::cout << "Initial spawn set at (100, " << spawnY << ") ground=" << spawnGroundY << std::endl;
     
-    // === NEW ENEMY TYPES ===
-    enemyManager.AddNewtronBlue(1400.0f, 1632.0f);
-    enemyManager.AddNewtronGreen(2800.0f, 1632.0f);
-    enemyManager.AddBomb(900.0f, 1632.0f);
-    enemyManager.AddBomb(4200.0f, 1632.0f);
-    enemyManager.AddCaterkiller(1600.0f, 1640.0f);
-    enemyManager.AddCaterkiller(3200.0f, 1640.0f);
-    enemyManager.AddBatbrain(1000.0f, 1300.0f);
-    enemyManager.AddBatbrain(2400.0f, 1200.0f);
-    enemyManager.AddBurrobot(1100.0f, 1632.0f);
-    enemyManager.AddBurrobot(3000.0f, 1632.0f);
-    enemyManager.AddRoller(2200.0f, 1632.0f);
-    enemyManager.AddRoller(4500.0f, 1632.0f);
-    enemyManager.AddJaws(2950.0f, 1750.0f);
-    enemyManager.AddJaws(5750.0f, 1750.0f);
-    enemyManager.AddBallHog(3300.0f, 1632.0f);
-    enemyManager.AddOrbinaut(3600.0f, 1632.0f);
-    enemyManager.AddOrbinaut(5000.0f, 1632.0f);
+    auto placeCheckpoint = [](float x) {
+        int groundY = FindGroundY(static_cast<int>(x));
+        if (groundY > 0) {
+            checkpointManager.Add(x, static_cast<float>(groundY - 64));
+        }
+    };
     
-    // Add springs - bounce Sonic to higher platforms
-    springManager.Add(500.0f, 1632.0f, SpringDirection::Up, true);
-    springManager.Add(1500.0f, 1632.0f, SpringDirection::Up, true);
-    springManager.Add(2000.0f, 1200.0f, SpringDirection::Up, false);
-    springManager.Add(3200.0f, 1632.0f, SpringDirection::DiagonalUpRight, true);
+    placeCheckpoint(2000.0f);  //early checkpoint
+    placeCheckpoint(4000.0f);  //mid-level
+    placeCheckpoint(6000.0f);  //later section
+    placeCheckpoint(8000.0f);  //near end
     
-    // Add spikes - hazards
-    spikeManager.Add(750.0f, 1632.0f, SpikeDirection::Up);
-    spikeManager.Add(782.0f, 1632.0f, SpikeDirection::Up);
-    spikeManager.Add(2200.0f, 1632.0f, SpikeDirection::Up);
-    spikeManager.Add(2232.0f, 1632.0f, SpikeDirection::Up);
-    spikeManager.Add(2264.0f, 1632.0f, SpikeDirection::Up);
+//=== MONITORS (Power-ups) ===
+//only place on flat ground, avoid springs/checkpoints/spikes
+//springs at: 300, 800, 1400, 1900, 2700, 3500
+//checkpoints at: 2000, 4000, 6000, 8000
+    auto placeMonitorOnFlat = [](float x, MonitorType type) -> bool {
+//check 3 points for flatness
+        int groundY1 = FindGroundY(static_cast<int>(x - 20));
+        int groundY2 = FindGroundY(static_cast<int>(x));
+        int groundY3 = FindGroundY(static_cast<int>(x + 20));
+        
+        if (groundY1 > 0 && groundY2 > 0 && groundY3 > 0) {
+            int minY = std::min({groundY1, groundY2, groundY3});
+            int maxY = std::max({groundY1, groundY2, groundY3});
+//only place if ground is flat (within 6 pixels)
+            if ((maxY - minY) <= 6) {
+                monitorManager.Add(x, static_cast<float>(groundY2 - 35), type);
+                std::cout << "Placed monitor at X:" << x << std::endl;
+                return true;
+            }
+        }
+        return false;
+    };
     
-    // Add checkpoints
-    checkpointManager.SetInitialSpawn(150.0f, 1600.0f);
-    checkpointManager.Add(1000.0f, 1600.0f);
-    checkpointManager.Add(2500.0f, 1600.0f);
-    checkpointManager.Add(4500.0f, 1536.0f);
+//try to place each monitor type - if position fails, try nearby positions
+    auto tryPlaceMonitor = [&placeMonitorOnFlat](float preferredX, MonitorType type) {
+//try preferred position first
+        if (placeMonitorOnFlat(preferredX, type)) return;
+//try nearby positions
+        for (float offset = 50.0f; offset <= 200.0f; offset += 50.0f) {
+            if (placeMonitorOnFlat(preferredX + offset, type)) return;
+            if (placeMonitorOnFlat(preferredX - offset, type)) return;
+        }
+        std::cout << "Could not place monitor near X:" << preferredX << std::endl;
+    };
     
-    // Add monitors/item boxes
-    monitorManager.Add(400.0f, 1620.0f, MonitorType::Ring);
-    monitorManager.Add(900.0f, 1180.0f, MonitorType::Shield);
-    monitorManager.Add(1700.0f, 1620.0f, MonitorType::SpeedShoes);
-    monitorManager.Add(2400.0f, 1180.0f, MonitorType::Invincibility);
-    monitorManager.Add(3000.0f, 1620.0f, MonitorType::ExtraLife);
-    monitorManager.Add(3800.0f, 1620.0f, MonitorType::Ring);
+//RING monitors (common)
+    tryPlaceMonitor(250.0f, MonitorType::Ring);
+    tryPlaceMonitor(2300.0f, MonitorType::Ring);
+    tryPlaceMonitor(3800.0f, MonitorType::Ring);
+    tryPlaceMonitor(4500.0f, MonitorType::Ring);
+    tryPlaceMonitor(5700.0f, MonitorType::Ring);
+    tryPlaceMonitor(6500.0f, MonitorType::Ring);
+    tryPlaceMonitor(9200.0f, MonitorType::Ring);
+    
+//SHIELD monitors (3-4)
+    tryPlaceMonitor(500.0f, MonitorType::Shield);
+    tryPlaceMonitor(3100.0f, MonitorType::Shield);
+    tryPlaceMonitor(5400.0f, MonitorType::Shield);
+    tryPlaceMonitor(7500.0f, MonitorType::Shield);
+
+//INVINCIBILITY monitors (3-4)
+    tryPlaceMonitor(1050.0f, MonitorType::Invincibility);
+    tryPlaceMonitor(2950.0f, MonitorType::Invincibility);
+    tryPlaceMonitor(6350.0f, MonitorType::Invincibility);
+    tryPlaceMonitor(9050.0f, MonitorType::Invincibility);
+
+//SPEED SHOES monitors (3-4)
+    tryPlaceMonitor(1700.0f, MonitorType::SpeedShoes);
+    tryPlaceMonitor(4250.0f, MonitorType::SpeedShoes);
+    tryPlaceMonitor(7150.0f, MonitorType::SpeedShoes);
+    tryPlaceMonitor(8650.0f, MonitorType::SpeedShoes);
+
+//EXTRA LIFE monitors (2 - rare)
+    tryPlaceMonitor(3350.0f, MonitorType::ExtraLife);
+    tryPlaceMonitor(7350.0f, MonitorType::ExtraLife);
+
+//EGGMAN monitor (1 - trap)
+    tryPlaceMonitor(5150.0f, MonitorType::Eggman);
+    }  //end if (includeMonitorsAndLevelObjects)
+
+//=== FLOWERS (decorative) ===
+//placed from Tiled map objects: circles = Sunflower (Tall), rectangles = Flower (Short)
+//y offset needed: Tiled gives base position, but sprite draws from top-left
+//tall flowers are 40px tall, Short are 32px - offset by ~32 to plant them in grass
+    
+//sunflowers (Tall) - from circles in Tiled (add 32 to Y to plant in grass)
+    flowerManager.Add(15.0f, 1157.0f, FlowerType::Short);
+    flowerManager.Add(270.67f, 1158.0f, FlowerType::Short);
+    flowerManager.Add(368.0f, 1077.33f, FlowerType::Short);
+    flowerManager.Add(527.75f, 1158.0f, FlowerType::Short);
+    flowerManager.Add(1167.25f, 1110.25f, FlowerType::Short);
+    flowerManager.Add(1551.75f, 1158.0f, FlowerType::Short);
+    flowerManager.Add(1952.33f, 1077.33f, FlowerType::Short);
+    flowerManager.Add(2831.75f, 901.5f, FlowerType::Short);
+    flowerManager.Add(3088.18f, 901.64f, FlowerType::Short);
+    flowerManager.Add(3823.75f, 837.5f, FlowerType::Short);
+    flowerManager.Add(4255.5f, 822.0f, FlowerType::Short);
+    flowerManager.Add(4367.5f, 790.0f, FlowerType::Short);
+    flowerManager.Add(4879.33f, 901.0f, FlowerType::Short);
+    flowerManager.Add(5407.5f, 884.5f, FlowerType::Short);
+    flowerManager.Add(6000.5f, 342.0f, FlowerType::Short);
+    flowerManager.Add(6159.5f, 326.5f, FlowerType::Short);
+    flowerManager.Add(6415.5f, 326.5f, FlowerType::Short);
+    flowerManager.Add(6511.5f, 342.0f, FlowerType::Short);
+    flowerManager.Add(6928.0f, 1413.5f, FlowerType::Short);
+    flowerManager.Add(7312.73f, 1109.82f, FlowerType::Short);
+    flowerManager.Add(8144.33f, 1109.33f, FlowerType::Short);
+    flowerManager.Add(8175.67f, 1094.33f, FlowerType::Short);
+    flowerManager.Add(8463.33f, 1157.67f, FlowerType::Short);
+    flowerManager.Add(8559.0f, 1078.33f, FlowerType::Short);
+    flowerManager.Add(8975.0f, 1413.5f, FlowerType::Short);
+    flowerManager.Add(9231.0f, 1414.0f, FlowerType::Short);
+    flowerManager.Add(9488.0f, 1414.0f, FlowerType::Short);
+    flowerManager.Add(9744.0f, 1413.5f, FlowerType::Short);
+    
+//regular Flowers (Short) - from rectangles in Tiled (add 24 to Y to plant in grass)
+    flowerManager.Add(79.0f, 1190.0f, FlowerType::Tall);
+    flowerManager.Add(110.36f, 1189.82f, FlowerType::Tall);
+    flowerManager.Add(1070.0f, 1125.75f, FlowerType::Tall);
+    flowerManager.Add(1102.25f, 1126.25f, FlowerType::Tall);
+    flowerManager.Add(1198.25f, 1125.25f, FlowerType::Tall);
+    flowerManager.Add(1839.5f, 1125.5f, FlowerType::Tall);
+    flowerManager.Add(2894.25f, 933.5f, FlowerType::Tall);
+    flowerManager.Add(2926.0f, 933.75f, FlowerType::Tall);
+    flowerManager.Add(3790.5f, 869.75f, FlowerType::Tall);
+    flowerManager.Add(4143.5f, 869.0f, FlowerType::Tall);
+    flowerManager.Add(4415.0f, 805.5f, FlowerType::Tall);
+    flowerManager.Add(4687.0f, 869.67f, FlowerType::Tall);
+    flowerManager.Add(4830.0f, 933.5f, FlowerType::Tall);
+    flowerManager.Add(4941.5f, 933.0f, FlowerType::Tall);
+    flowerManager.Add(4974.0f, 933.5f, FlowerType::Tall);
+    flowerManager.Add(5967.0f, 357.0f, FlowerType::Tall);
+    flowerManager.Add(6062.0f, 358.0f, FlowerType::Tall);
+    flowerManager.Add(6111.5f, 358.0f, FlowerType::Tall);
+    flowerManager.Add(6222.0f, 357.5f, FlowerType::Tall);
+    flowerManager.Add(6318.0f, 358.5f, FlowerType::Tall);
+    flowerManager.Add(6366.5f, 358.0f, FlowerType::Tall);
+    flowerManager.Add(6478.5f, 358.0f, FlowerType::Tall);
+    flowerManager.Add(6574.5f, 359.0f, FlowerType::Tall);
+    flowerManager.Add(6735.5f, 1382.0f, FlowerType::Tall);
+    flowerManager.Add(6879.0f, 1446.0f, FlowerType::Tall);
+    flowerManager.Add(7214.55f, 1126.0f, FlowerType::Tall);
+    flowerManager.Add(7245.82f, 1126.36f, FlowerType::Tall);
+    flowerManager.Add(7342.0f, 1126.0f, FlowerType::Tall);
+    flowerManager.Add(8782.33f, 1382.0f, FlowerType::Tall);
+    flowerManager.Add(8926.0f, 1446.5f, FlowerType::Tall);
+    flowerManager.Add(9038.5f, 1446.0f, FlowerType::Tall);
+    flowerManager.Add(9070.0f, 1446.5f, FlowerType::Tall);
+    flowerManager.Add(9294.0f, 1446.0f, FlowerType::Tall);
+    flowerManager.Add(9326.0f, 1445.5f, FlowerType::Tall);
+    flowerManager.Add(9550.0f, 1445.5f, FlowerType::Tall);
+    flowerManager.Add(9584.0f, 1446.0f, FlowerType::Tall);
+    flowerManager.Add(9806.0f, 1446.0f, FlowerType::Tall);
+    flowerManager.Add(9838.5f, 1446.5f, FlowerType::Tall);
+    
+//=== BIG RING (Level Goal) ===
+//place at end of level - spinning ring that completes the level
+//map is 9984 pixels wide, place ring near the end
+//ring is 64x64 base * 2.0 scale = 128x128 pixels
+    int endGroundY = FindGroundY(9640);  //moved left ~60 pixels
+    if (endGroundY > 0) {
+//place ring above ground - it's 128 pixels tall so offset by 140
+        bigRingManager.Add(9640.0f, static_cast<float>(endGroundY - 140), 2.0f);
+        std::cout << "Big ring placed at (9640, " << (endGroundY - 140) << ") - 128x128 pixels" << std::endl;
+    } else {
+//fallback position
+        bigRingManager.Add(9640.0f, 1300.0f, 2.0f);
+        std::cout << "Big ring placed at fallback (9640, 1300)" << std::endl;
+    }
+    
+    std::cout << "Game objects placed based on terrain." << std::endl;
 }
+
+//terrain image for rendering (will be loaded from Sonic_Terrain.png)
+engine::BitmapPtr terrainImage = nullptr;
 
 void CreateTestTerrain() {
-    const int TILES_X = 80;
-    const int TILES_Y = 15;
+//================================================================
+//NEW TERRAIN SYSTEM (Tiled-based):
+//- Visual map: Sonic_Terrain.csv (39×6 tiles at 256×256)
+//- Collision grid: Collision_Map.csv (1248×192 cells at 8×8)
+//- Total pixels: 9984×1536
+//- Screen viewport: 320×224 pixels (original Sonic Genesis resolution)
+//================================================================
     
-    // Get tileset from resource manager
-    engine::BitmapPtr tileset = ResourceManager::Instance().GetTilesSheet();
+    std::cout << "=== Loading Tiled Terrain System ===" << std::endl;
+    
+//load collision grid from Collision_Map.csv
+    gridLayer = new GridLayer();
+    bool gridLoaded = gridLayer->LoadCSV(g_assetPath + "Collision_Map.csv");
+    
+    if (!gridLoaded) {
+        std::cerr << "CRITICAL: Failed to load Collision_Map.csv!" << std::endl;
+        std::cerr << "Creating fallback grid..." << std::endl;
+        
+//fallback: create a simple flat ground grid
+//9984/8 = 1248 cols, 1536/8 = 192 rows
+        constexpr int GRID_COLS = 1248;
+        constexpr int GRID_ROWS = 192;
+        gridLayer->Create(GRID_ROWS, GRID_COLS);
+        
+//add ground at bottom (roughly last 20% of height)
+        int groundStartRow = static_cast<int>(GRID_ROWS * 0.8);
+        for (int row = groundStartRow; row < GRID_ROWS; ++row) {
+            for (int col = 0; col < GRID_COLS; ++col) {
+                gridLayer->SetTile(static_cast<Dim>(col), static_cast<Dim>(row), GRID_SOLID);
+            }
+        }
+        std::cout << "Created fallback grid: " << GRID_COLS << "x" << GRID_ROWS << std::endl;
+    }
+    
+//load terrain pre-rendered image (optional - for direct rendering without tile borders)
+    auto& loader = engine::BitmapLoader::Instance();
+    terrainImage = loader.Load(g_assetPath + "Sonic_Terrain.png");
+    
+    if (terrainImage) {
+        std::cout << "✓ Loaded terrain image: " << terrainImage->GetWidth() << "x" << terrainImage->GetHeight() << " pixels" << std::endl;
+    } else {
+        std::cout << "Note: Sonic_Terrain.png not found - using tile-based rendering" << std::endl;
+    }
+    
+//load tileset for tile-based rendering
+    engine::BitmapPtr tileset = loader.Load(g_assetPath + "Map_Tilesheet.png");
+    if (!tileset) {
+        std::cerr << "WARNING: Map_Tilesheet.png not found!" << std::endl;
+        tileset = ResourceManager::Instance().GetTilesSheet();  //fallback
+    } else {
+        std::cout << "✓ Loaded tileset: " << tileset->GetWidth() << "x" << tileset->GetHeight() << " pixels" << std::endl;
+    }
+    
+//create tile layer (39 tiles wide × 6 tiles tall at 256×256)
+    constexpr int TILES_X = 39;
+    constexpr int TILES_Y = 6;
     
     actionLayer = new TileLayer();
     actionLayer->Create(static_cast<Dim>(TILES_Y), static_cast<Dim>(TILES_X), tileset);
+    
+//load visual map from CSV
+    bool mapLoaded = actionLayer->LoadCSV(g_assetPath + "Sonic_Terrain.csv");
+    if (mapLoaded) {
+        std::cout << "✓ Loaded visual map from Sonic_Terrain.csv" << std::endl;
+    } else {
+        std::cerr << "WARNING: Failed to load Sonic_Terrain.csv!" << std::endl;
+    }
+    
     actionLayer->SetViewWindow({0, 0, SCREEN_WIDTH, SCREEN_HEIGHT});
     
-    // ================================================================
-    // PDF COMPLIANCE NOTE: 
-    // The PDF requires loading terrain from CSV exported from Tiled editor.
-    // Currently using programmatic terrain for testing.
-    // 
-    // TODO for full compliance:
-    // 1. Create terrain in Tiled editor
-    // 2. Export to CSV using TileMapLoader::LoadTileLayerCSV()
-    // 3. Export grid layer to separate CSV
-    // 4. Load grid using TileMapLoader::LoadGridLayerCSV()
-    //
-    // The collision_map.csv file exists and is loaded below.
-    // ================================================================
+    std::cout << "Terrain dimensions: " << MAP_WIDTH << "x" << MAP_HEIGHT << " pixels" << std::endl;
+    std::cout << "Visual map: " << actionLayer->GetCols() << "x" << actionLayer->GetRows() << " tiles" << std::endl;
+    std::cout << "Collision grid: " << gridLayer->GetCols() << "x" << gridLayer->GetRows() << " cells" << std::endl;
+    std::cout << "Grid pixel size: " << gridLayer->GetPixelWidth() << "x" << gridLayer->GetPixelHeight() << std::endl;
     
-    // Try to load grid from CSV (PDF requirement)
-    bool csvLoaded = LoadGridFromCSV(g_assetPath + "collision_map.csv", gridLayer, TILES_X, TILES_Y);
-    
-    if (!csvLoaded) {
-        std::cout << "CSV grid not found, using programmatic grid" << std::endl;
-        // Fallback to programmatic grid creation
-        Dim gridRows = static_cast<Dim>(TILES_Y * GRID_BLOCK_ROWS);
-        Dim gridCols = static_cast<Dim>(TILES_X * GRID_BLOCK_COLUMNS);
-        gridLayer = new GridLayer(gridRows, gridCols);
-        
-        // Ground
-        int groundStartRow = (TILES_Y - 2) * GRID_BLOCK_ROWS;
-        for (Dim row = static_cast<Dim>(groundStartRow); row < gridRows; ++row) {
-            for (Dim col = 0; col < gridCols; ++col) {
-                gridLayer->SetTile(col, row, GRID_SOLID);
-            }
-        }
-    } else {
-        std::cout << "Loaded grid from CSV file (PDF compliant)" << std::endl;
-    }
-    
-    // Set up tile indices for the level
-    // Tileset is 5 columns x 11 rows at 182x182 pixels
-    // Tile index = row * 5 + col (0-based)
-    // Index 0 = empty, so we use 1+ for actual tiles
-    
-    // Looking at tiles_first_map_fixed.png:
-    // Row 0 (indices 1-5): Ground with palm trees, slopes
-    // Row 1 (indices 6-10): More ground variations  
-    // Row 2+ : Various terrain pieces
-    
-    const TileIndex TILE_EMPTY = 0;           // Empty/sky
-    const TileIndex TILE_GROUND_PALM1 = 1;    // Ground with palm tree (top-left of tileset)
-    const TileIndex TILE_GROUND_PALM2 = 2;    // Ground with different palm
-    const TileIndex TILE_SLOPE_R = 3;         // Slope going right
-    const TileIndex TILE_SLOPE_L = 4;         // Slope going left
-    const TileIndex TILE_GROUND_EDGE = 5;     // Ground edge
-    const TileIndex TILE_CLIFF = 6;           // Row 1, first tile
-    const TileIndex TILE_UNDERGROUND = 7;     // Underground fill
-    const TileIndex TILE_PLATFORM = 8;        // Platform piece
-    const TileIndex TILE_GROUND_FLAT = 11;    // Row 2, second tile - flat ground
-    
-    (void)TILE_EMPTY;  // Suppress unused warnings
-    (void)TILE_SLOPE_R;
-    (void)TILE_SLOPE_L;
-    (void)TILE_GROUND_EDGE;
-    (void)TILE_CLIFF;
-    
-    // Set ground tiles (last 2 rows)
-    for (int col = 0; col < TILES_X; ++col) {
-        // Skip pit columns
-        if ((col >= 23 && col <= 25) || (col >= 45 && col <= 48)) continue;
-        
-        // Top of ground (row 13) - alternate between palm variations
-        TileIndex groundTile = (col % 3 == 0) ? TILE_GROUND_PALM1 : 
-                              (col % 3 == 1) ? TILE_GROUND_PALM2 : TILE_GROUND_FLAT;
-        actionLayer->SetTile(static_cast<Dim>(col), 13, groundTile);
-        
-        // Underground fill (row 14)
-        actionLayer->SetTile(static_cast<Dim>(col), 14, TILE_UNDERGROUND);
-    }
-    
-    // Platform tiles (row 11 platforms)
-    for (int col = 5; col < 10; ++col) actionLayer->SetTile(static_cast<Dim>(col), 11, TILE_PLATFORM);
-    for (int col = 15; col < 22; ++col) actionLayer->SetTile(static_cast<Dim>(col), 11, TILE_PLATFORM);
-    for (int col = 30; col < 38; ++col) actionLayer->SetTile(static_cast<Dim>(col), 11, TILE_PLATFORM);
-    for (int col = 50; col < 58; ++col) actionLayer->SetTile(static_cast<Dim>(col), 11, TILE_PLATFORM);
-    for (int col = 65; col < 72; ++col) actionLayer->SetTile(static_cast<Dim>(col), 11, TILE_PLATFORM);
-    
-    // Higher platforms (row 9)
-    for (int col = 8; col < 14; ++col) actionLayer->SetTile(static_cast<Dim>(col), 9, TILE_PLATFORM);
-    for (int col = 25; col < 32; ++col) actionLayer->SetTile(static_cast<Dim>(col), 9, TILE_PLATFORM);
-    for (int col = 42; col < 50; ++col) actionLayer->SetTile(static_cast<Dim>(col), 9, TILE_PLATFORM);
-    for (int col = 60; col < 68; ++col) actionLayer->SetTile(static_cast<Dim>(col), 9, TILE_PLATFORM);
-    
-    // Highest platforms (row 7)
-    for (int col = 12; col < 18; ++col) actionLayer->SetTile(static_cast<Dim>(col), 7, TILE_PLATFORM);
-    for (int col = 35; col < 42; ++col) actionLayer->SetTile(static_cast<Dim>(col), 7, TILE_PLATFORM);
-    for (int col = 55; col < 62; ++col) actionLayer->SetTile(static_cast<Dim>(col), 7, TILE_PLATFORM);
-    
-    // ==== GRID COLLISION LAYER ====
-    // Already loaded at start of function - add platforms if using programmatic fallback
-    Dim gridRows = gridLayer->GetRows();
-    Dim gridCols = gridLayer->GetCols();
-    
-    // Define groundStartRow for use in both CSV and programmatic paths
-    int groundStartRow = (TILES_Y - 2) * GRID_BLOCK_ROWS;
-    
-    auto makePlatform = [&](int tileRow, int startTileCol, int endTileCol) {
-        int row = tileRow * GRID_BLOCK_ROWS;
-        for (int col = startTileCol * GRID_BLOCK_COLUMNS; col < endTileCol * GRID_BLOCK_COLUMNS; ++col) {
-            if (col >= 0 && col < static_cast<int>(gridCols) && row >= 0 && row < static_cast<int>(gridRows)) {
-                gridLayer->SetTile(static_cast<Dim>(col), static_cast<Dim>(row), GRID_TOP_SOLID);
-            }
-        }
-    };
-    
-    auto makeBlock = [&](int startRow, int endRow, int startCol, int endCol) {
-        for (int row = startRow * GRID_BLOCK_ROWS; row < endRow * GRID_BLOCK_ROWS; ++row) {
-            for (int col = startCol * GRID_BLOCK_COLUMNS; col < endCol * GRID_BLOCK_COLUMNS; ++col) {
-                if (col >= 0 && col < static_cast<int>(gridCols) && row >= 0 && row < static_cast<int>(gridRows)) {
-                    gridLayer->SetTile(static_cast<Dim>(col), static_cast<Dim>(row), GRID_SOLID);
-                }
-            }
-        }
-    };
-    
-    // Only add manual adjustments if we loaded from CSV (to fix any issues)
-    // Skip these if using programmatic fallback since they're redundant
-    
-    // Platforms (will overlay on CSV data)
-    makePlatform(11, 5, 10);
-    makePlatform(11, 15, 22);
-    makePlatform(11, 30, 38);
-    makePlatform(11, 50, 58);
-    makePlatform(11, 65, 72);
-    makePlatform(9, 8, 14);
-    makePlatform(9, 25, 32);
-    makePlatform(9, 42, 50);
-    makePlatform(9, 60, 68);
-    makePlatform(7, 12, 18);
-    makePlatform(7, 35, 42);
-    makePlatform(7, 55, 62);
-    
-    // Obstacles - both visual and collision
-    makeBlock(11, 13, 20, 21);
-    actionLayer->SetTile(20, 12, TILE_UNDERGROUND);  // Visual wall
-    actionLayer->SetTile(20, 11, TILE_UNDERGROUND);
-    
-    makeBlock(9, 13, 40, 41);
-    actionLayer->SetTile(40, 10, TILE_UNDERGROUND);
-    actionLayer->SetTile(40, 11, TILE_UNDERGROUND);
-    actionLayer->SetTile(40, 12, TILE_UNDERGROUND);
-    actionLayer->SetTile(40, 9, TILE_UNDERGROUND);
-    
-    makeBlock(7, 13, 58, 59);
-    for (int row = 7; row < 13; ++row) {
-        actionLayer->SetTile(58, static_cast<Dim>(row), TILE_UNDERGROUND);
-    }
-    
-    // Add visible walls at left edge
-    for (int row = 0; row < TILES_Y - 2; ++row) {
-        actionLayer->SetTile(0, static_cast<Dim>(row), TILE_UNDERGROUND);
-    }
-    // Add collision for left wall
-    for (Dim row = 0; row < gridRows; ++row) {
-        gridLayer->SetTile(0, row, GRID_SOLID);
-        gridLayer->SetTile(1, row, GRID_SOLID);
-    }
-    
-    // Stairs
-    for (int i = 0; i < 5; ++i) {
-        makeBlock(13 - i - 1, 13 - i, 70 + i*2, 72 + i*2);
-    }
-    
-    // Pits
-    for (Dim row = static_cast<Dim>(groundStartRow); row < gridRows; ++row) {
-        for (int col = 23 * GRID_BLOCK_COLUMNS; col < 25 * GRID_BLOCK_COLUMNS; ++col) {
-            gridLayer->SetTile(static_cast<Dim>(col), row, GRID_EMPTY);
-        }
-        for (int col = 45 * GRID_BLOCK_COLUMNS; col < 48 * GRID_BLOCK_COLUMNS; ++col) {
-            gridLayer->SetTile(static_cast<Dim>(col), row, GRID_EMPTY);
+//debug: count special tiles
+    int tunnelCount = 0, loopCount = 0, slopeCount = 0, deathCount = 0;
+    for (Dim row = 0; row < gridLayer->GetRows(); ++row) {
+        for (Dim col = 0; col < gridLayer->GetCols(); ++col) {
+            GridIndex tile = gridLayer->GetTile(col, row);
+            if (tile == GRID_TUNNEL) tunnelCount++;
+            else if (tile == GRID_LOOP) loopCount++;
+            else if (tile == GRID_SLOPE) slopeCount++;
+            else if (tile == GRID_DEATH) deathCount++;
         }
     }
+    std::cout << "=== Special tile counts ===" << std::endl;
+    std::cout << "  Tunnels: " << tunnelCount << std::endl;
+    std::cout << "  Loops: " << loopCount << std::endl;
+    std::cout << "  Slopes: " << slopeCount << std::endl;
+    std::cout << "  Death: " << deathCount << std::endl;
     
-    // Setup managers
+//setup managers
     ringManager.SetGridLayer(gridLayer);
     enemyManager.SetGridLayer(gridLayer);
+    AnimalManager::Instance().SetGridLayer(gridLayer);
     
-    // Place all game objects (extracted to allow reset)
+//place all game objects
     PlaceGameObjects();
     
-    // Setup parallax background using the background sheet
+//setup parallax background
     auto bgSheet = ResourceManager::Instance().GetBackgroundSheet();
     SetupGreenHillBackground(parallaxManager, bgSheet);
     
+//setup callbacks
     ringManager.SetOnRingCollected([](int count) {
         std::cout << "Collected " << count << " ring(s)!" << std::endl;
         gameHUD.AddRings(count);
+        SoundManager::Instance().OnRingCollect();
     });
     enemyManager.SetOnEnemyKilled([](int score) {
         std::cout << "Enemy killed! +" << score << " points" << std::endl;
@@ -1569,11 +2449,13 @@ void CreateTestTerrain() {
     });
     enemyManager.SetOnAnimalFreed([](float x, float y) {
         std::cout << "Animal freed at (" << x << ", " << y << ")" << std::endl;
-        animalManager.Spawn(x, y);
+        AnimalManager::Instance().Spawn(x, y);
     });
     
-    // Start level timer
+//start level timer
     gameHUD.StartLevel(GetSystemTime());
+    
+    std::cout << "=== Terrain Load Complete ===" << std::endl;
 }
 
 int main() {
@@ -1584,32 +2466,52 @@ int main() {
     std::cout << "  Down/S: Crouch (still) or Roll (moving)" << std::endl;
     std::cout << "  Down + Jump: Spindash (charge and release)" << std::endl;
     std::cout << "  Left Click: Look Up (when still)" << std::endl;
-    std::cout << "  G: Grid   F1: Debug   ESC: Pause   Q: Quit" << std::endl;
+    std::cout << "  G: Grid   F1: Debug   ESC: Pause   M: Music   Q: Quit" << std::endl;
     std::cout << std::endl;
     
-    if (!EngineInit(SCREEN_WIDTH, SCREEN_HEIGHT, "Sonic Engine - SFML")) {
+//initialize window at 640×448
+    if (!EngineInit(WINDOW_WIDTH, WINDOW_HEIGHT, "Sonic Engine - SFML")) {
         std::cerr << "Failed to initialize engine!" << std::endl;
         return 1;
     }
     
-    // Detect asset path early (handles running from project root OR bin/)
+//set virtual resolution for classic Sonic "zoomed in" look
+//renders at 320×224 and scales 2x to fill 640×448 window
+    GetGraphics().SetVirtualResolution(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+    
+    std::cout << "=== RESOLUTION SETTINGS ===" << std::endl;
+    std::cout << "Window size: " << WINDOW_WIDTH << "x" << WINDOW_HEIGHT << std::endl;
+    std::cout << "Virtual (render) resolution: " << VIRTUAL_WIDTH << "x" << VIRTUAL_HEIGHT << std::endl;
+    std::cout << "Scale factor: 2x (classic Sonic zoom)" << std::endl;
+    std::cout << "Backbuffer size: " << GetGraphics().GetBackBuffer().getSize().x << "x" << GetGraphics().GetBackBuffer().getSize().y << std::endl;
+    std::cout << "===========================" << std::endl;
+    
+//detect asset path early (handles running from project root OR bin/)
     g_assetPath = FindAssetPath();
     std::cout << "Using asset path: " << g_assetPath << std::endl;
     
-    // Load assets using the detected path
+//load assets using the detected path
     ResourceManager::Instance().SetAssetPath(g_assetPath);
     assetsLoaded = ResourceManager::Instance().LoadAll();
-    
+
     if (!assetsLoaded) {
         std::cout << "Assets not found - using placeholder graphics" << std::endl;
         std::cout << "To use real sprites, copy sprite sheets to assets/ folder" << std::endl;
     }
-    
+
+//initialize sound system
+    SoundManager::Instance().SetAssetPath(g_assetPath);
+    SoundManager::Instance().LoadAll();
+    SoundManager::Instance().PlayMusic(MusicTrack::GreenHillZone);  //start background music
+
     CreateTestTerrain();
-    // showGrid toggled with G key
+//showGrid toggled with G key
     
     sonic = new SonicPlayer();
-    sonic->Create(150.0f, 1600.0f, gridLayer);
+//spawn at start position above ground (ground at Y≈1216 at X=100)
+    float sonicSpawnY = 1100.0f;  //above ground level, physics settles
+    sonic->Create(100.0f, sonicSpawnY, gridLayer);  
+    std::cout << "Sonic spawned at (100, " << sonicSpawnY << ")" << std::endl;
     
     SonicPlayer::PhysicsConfig config;
     config.acceleration = 0.08f;
@@ -1624,41 +2526,32 @@ int main() {
     sonic->SetPhysicsConfig(config);
     
     sonic->SetOnRingsChanged([](int, int newRings) { gameHUD.rings = newRings; });
-    sonic->SetOnLivesChanged([](int, int newLives) { gameHUD.lives = newLives; });
-    sonic->SetOnStateChanged([](SonicState state) {
-        std::cout << "State: " << StateToString(state);
-        // Show which animation will be used
-        switch(state) {
-            case SonicState::Idle: std::cout << " -> sonic_idle"; break;
-            case SonicState::Bored: std::cout << " -> sonic_bored"; break;
-            case SonicState::LookingUp: std::cout << " -> sonic_lookup"; break;
-            case SonicState::Crouching: std::cout << " -> sonic_crouch"; break;
-            case SonicState::Spindash: std::cout << " -> sonic_spindash (revving)"; break;
-            case SonicState::Walking: std::cout << " -> sonic_walk"; break;
-            case SonicState::Running: std::cout << " -> sonic_walk (fast)"; break;
-            case SonicState::FullSpeed: std::cout << " -> sonic_run"; break;
-            case SonicState::Jumping: std::cout << " -> sonic_ball"; break;
-            case SonicState::Rolling: std::cout << " -> sonic_ball"; break;
-            case SonicState::Skidding: std::cout << " -> sonic_skid"; break;
-            case SonicState::Balancing: std::cout << " -> sonic_balance"; break;
-            case SonicState::Pushing: std::cout << " -> sonic_push"; break;
-            case SonicState::Spring: std::cout << " -> sonic_spring/ball (up/down)"; break;
-            case SonicState::Landing: std::cout << " -> sonic_idle (landing)"; break;
-            case SonicState::Hurt: std::cout << " -> sonic_hurt"; break;
-            case SonicState::Dead: std::cout << " -> sonic_death"; break;
-            default: break;
-        }
-        std::cout << std::endl;
+//NOTE: Removed lives callback - HUD gets lives directly from sonic pointer
+//state logging disabled to improve performance
+    sonic->SetOnStateChanged([](SonicState) {
+//logging disabled for performance
     });
     sonic->SetOnScatterRings([](float x, float y, int count) {
         ringManager.ScatterRings(x, y, count);
+        SoundManager::Instance().PlaySound(SoundEffect::RingLoss);
         std::cout << "Scattered " << count << " rings!" << std::endl;
     });
-    sonic->SetOnDeath([]() {
-        std::cout << "=== GAME OVER ===" << std::endl;
-        currentScreen = GameScreen::GameOver;
-    });
-    
+//NOTE: onDeath callback removed - was causing dual game over logic
+//game over is now handled ONLY in the death state checking code
+//sonic->SetOnDeath([]() {
+//std::cout << "=== GAME OVER ===" << std::endl;
+//currentScreen = GameScreen::GameOver;
+//});
+
+//load and initialize whirl circles
+    std::string collisionMapPath = g_assetPath + "Collision_Map.tmj";
+    if (whirlCircleManager.LoadFromFile(collisionMapPath.c_str())) {
+        whirlCircleManager.Initialize(sonic);
+        std::cout << "Whirl circles loaded and initialized" << std::endl;
+    } else {
+        std::cout << "WARNING: Failed to load whirl circles from " << collisionMapPath << std::endl;
+    }
+
     GetGame().SetOnPauseResume([]() {
         if (!GetGame().IsPaused()) {
             auto dt = GetSystemTime() - GetGame().GetPauseTime();

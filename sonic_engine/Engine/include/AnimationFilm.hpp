@@ -11,7 +11,7 @@ namespace engine {
 
 class AnimationFilm {
 private:
-    std::vector<Rect> boxes;  // Frame bounding boxes
+    std::vector<Rect> boxes;  //frame bounding boxes
     BitmapPtr bitmap;
     std::string id;
     
@@ -26,6 +26,9 @@ public:
     
     void DisplayFrame(const Point& at, byte frameNo) const;
     void DisplayFrameFlipped(const Point& at, byte frameNo) const;
+    void DisplayFrameFlippedVertical(const Point& at, byte frameNo) const;
+    void DisplayFrameScaled(const Point& at, byte frameNo, float scale) const;
+    void DisplayFrameScaledFlipped(const Point& at, byte frameNo, float scale) const;
     
     void SetBitmap(BitmapPtr b) { bitmap = b; }
     void Append(const Rect& r) { boxes.push_back(r); }
@@ -35,7 +38,7 @@ public:
     AnimationFilm(BitmapPtr bmp, const std::vector<Rect>& rects, const std::string& _id);
 };
 
-// Singleton holder for all animation films
+//singleton holder for all animation films
 class AnimationFilmHolder {
 private:
     std::map<std::string, AnimationFilm*> films;
@@ -45,15 +48,15 @@ private:
     
 public:
     static AnimationFilmHolder& Get();
-    static AnimationFilmHolder& Instance() { return Get(); }  // Alias
+    static AnimationFilmHolder& Instance() { return Get(); }  //alias
     
-    void Load(const std::string& jsonPath);  // Load from config
+    void Load(const std::string& jsonPath);  //load from config
     
     void AddFilm(const std::string& id, AnimationFilm* film) {
         films[id] = film;
     }
     
-    // Convenience: create and add film in one call
+//convenience: create and add film in one call
     AnimationFilm* AddFilm(const std::string& id, BitmapPtr bitmap, const std::vector<Rect>& frames) {
         auto* film = new AnimationFilm(bitmap, frames, id);
         films[id] = film;
@@ -74,6 +77,6 @@ public:
     ~AnimationFilmHolder() { CleanUp(); }
 };
 
-} // namespace engine
+}  //namespace engine
 
-#endif // ENGINE_ANIMATION_FILM_HPP
+#endif  //ENGINE_ANIMATION_FILM_HPP

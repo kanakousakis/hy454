@@ -11,21 +11,22 @@
 
 namespace app {
 
-// Singleton resource manager for loading and caching game assets
+//singleton resource manager for loading and caching game assets
 class ResourceManager {
 private:
-    // Sprite sheet bitmaps
+//sprite sheet bitmaps
     engine::BitmapPtr sonicSheet;
     engine::BitmapPtr enemiesSheet;
     engine::BitmapPtr miscSheet;
     engine::BitmapPtr animalsSheet;
     engine::BitmapPtr tilesSheet;
     engine::BitmapPtr backgroundSheet;
+    engine::BitmapPtr flowersSheet;
     
-    // Animation films (created from sprite sheets)
+//animation films (created from sprite sheets)
     std::map<std::string, engine::AnimationFilm*> films;
     
-    // Asset paths
+//asset paths
     std::string assetPath = "assets/";
     
     bool loaded = false;
@@ -45,7 +46,7 @@ public:
         }
     }
     
-    // Helper function to apply color key (make background transparent)
+//helper function to apply color key (make background transparent)
     void ApplyColorKey(engine::BitmapPtr& bmp, unsigned char r, unsigned char g, unsigned char b, int tolerance = 15) {
         if (!bmp) return;
         
@@ -55,7 +56,7 @@ public:
         for (unsigned y = 0; y < size.y; ++y) {
             for (unsigned x = 0; x < size.x; ++x) {
                 sf::Color pixel = img.getPixel(x, y);
-                // Check if pixel matches color key (with tolerance)
+//check if pixel matches color key (with tolerance)
                 int dr = std::abs(static_cast<int>(pixel.r) - static_cast<int>(r));
                 int dg = std::abs(static_cast<int>(pixel.g) - static_cast<int>(g));
                 int db = std::abs(static_cast<int>(pixel.b) - static_cast<int>(b));
@@ -66,12 +67,11 @@ public:
             }
         }
         
-        // Update texture from modified image
         bmp->UpdateTexture();
     }
     
-    // Apply color key to make backgrounds transparent
-    // Handles: Magenta (tiles), Dark Green (Sonic/misc), Pure Green, Medium Green
+//apply color key to make backgrounds transparent
+//handles: Magenta (tiles), Dark Green (Sonic/misc), Pure Green, Medium Green, Enemy Sheet Green
     void ApplyMultipleColorKeys(engine::BitmapPtr& bmp) {
         if (!bmp) return;
         
@@ -85,32 +85,50 @@ public:
                 
                 bool isBackground = false;
                 
-                // 1. MAGENTA (Pink) - Common in Tilesets (255, 0, 255)
+//1. MAGENTA (Pink) - Common in Tilesets (255, 0, 255)
                 if (pixel.r > 240 && pixel.g < 15 && pixel.b > 240) {
                     isBackground = true;
                 }
                 
-                // 2. Medium Green (0, 128, 0) - Used in misc/enemies sheets
-                // This is the EXACT color key for spikes and other misc items
-                else if (pixel.r < 20 && pixel.g >= 120 && pixel.g <= 140 && pixel.b < 20) {
+//2. Medium Green (0, 128, 0) - Used in misc/enemies sheets
+//EXPANDED tolerance to catch more variants
+                else if (pixel.r < 30 && pixel.g >= 110 && pixel.g <= 145 && pixel.b < 30) {
                     isBackground = true;
                 }
                 
-                // 3. Dark Green used in some Sonic sheets (darker variant)
+//3. Dark Green used in some Sonic sheets (darker variant)
                 else if (pixel.r < 60 && pixel.g > 25 && pixel.g < 90 && pixel.b < 60 &&
                     pixel.g > pixel.r && pixel.g > pixel.b) {
                     isBackground = true;
                 }
                 
-                // 4. Pure Green (0, 255, 0)
-                else if (pixel.r < 30 && pixel.g > 200 && pixel.b < 30) {
+//4. Pure Green (0, 255, 0) - BRIGHT GREEN (most common in sprite sheets)
+//be aggressive here - catch all bright greens
+                else if (pixel.r < 50 && pixel.g > 180 && pixel.b < 50) {
                     isBackground = true;
                 }
                 
-                // 5. Lighter Green key (147, 187, 148 variant) - Sonic sheet
+//5. Enemy Sheet Dark Green (RGB ~35-50, 95-110, 20-40)
+//this is the specific green used in enemies_sheet_fixed.png
+//sample colors: RGB(38, 103, 26), RGB(39, 102, 26), RGB(36, 103, 26)
+                else if (pixel.r >= 25 && pixel.r <= 55 && 
+                         pixel.g >= 90 && pixel.g <= 115 && 
+                         pixel.b >= 15 && pixel.b <= 45 &&
+                         pixel.g > pixel.r + 40 && pixel.g > pixel.b + 40) {
+                    isBackground = true;
+                }
+                
+//5. Lighter Green key (147, 187, 148 variant) - Sonic sheet
                 else if (pixel.r >= 140 && pixel.r <= 155 &&
                     pixel.g >= 180 && pixel.g <= 195 &&
                     pixel.b >= 140 && pixel.b <= 155) {
+                    isBackground = true;
+                }
+                
+//6. NEW: Catch any pixel where green is dominant (generic green detection)
+//this helps catch any green variants that slip through
+                else if (pixel.r < 80 && pixel.b < 80 && pixel.g > 90 &&
+                         pixel.g > pixel.r * 1.8 && pixel.g > pixel.b * 1.8) {
                     isBackground = true;
                 }
                 
@@ -132,11 +150,11 @@ public:
         
         auto& loader = engine::BitmapLoader::Instance();
         
-        // Try to load with full path feedback
+//try to load with full path feedback
         std::string fullPath = assetPath + "sonic_sheet_fixed.png";
         std::cout << "  Trying to load: " << fullPath << std::endl;
         
-        // Load sprite sheets
+//load sprite sheets
         sonicSheet = loader.Load(fullPath);
         if (!sonicSheet) {
             std::cerr << "  ERROR: Failed to load " << fullPath << std::endl;
@@ -146,8 +164,8 @@ public:
         }
         std::cout << "  Loaded Sonic sprite sheet (" << sonicSheet->GetWidth() << "x" << sonicSheet->GetHeight() << ")" << std::endl;
         
-        // Apply color key to make green background transparent
-        // Sonic sheet has green background RGB(147, 187, 148) - use multi-key for safety
+//apply color key to make green background transparent
+//sonic sheet has green background RGB(147, 187, 148) - use multi-key for safety
         ApplyMultipleColorKeys(sonicSheet);
         std::cout << "    Applied transparency to Sonic sheet" << std::endl;
         
@@ -157,7 +175,7 @@ public:
             return false;
         }
         std::cout << "  Loaded enemies sprite sheet (" << enemiesSheet->GetWidth() << "x" << enemiesSheet->GetHeight() << ")" << std::endl;
-        // Enemies sheet has dark green background
+//enemies sheet has dark green background
         ApplyMultipleColorKeys(enemiesSheet);
         
         miscSheet = loader.Load(assetPath + "misc_fixed.png");
@@ -166,7 +184,7 @@ public:
             return false;
         }
         std::cout << "  Loaded misc sprite sheet (" << miscSheet->GetWidth() << "x" << miscSheet->GetHeight() << ")" << std::endl;
-        // Misc sheet has green background
+//misc sheet has green background
         ApplyMultipleColorKeys(miscSheet);
         
         animalsSheet = loader.Load(assetPath + "animals_fixed.png");
@@ -182,15 +200,25 @@ public:
             return false;
         }
         std::cout << "  Loaded tileset (" << tilesSheet->GetWidth() << "x" << tilesSheet->GetHeight() << ")" << std::endl;
-        // Note: Tileset already has proper alpha transparency - no color keying needed
+//note: Tileset already has proper alpha transparency - no color keying needed
         
-        // Optional: background/foreground layer
+//optional: background/foreground layer
         backgroundSheet = loader.Load(assetPath + "background_foreground64.png");
         if (backgroundSheet) {
             std::cout << "  Loaded background sheet" << std::endl;
         }
         
-        // Create animation films from sprite sheets
+//load flowers sprite sheet
+        flowersSheet = loader.Load(assetPath + "flowers.png");
+        if (flowersSheet) {
+            std::cout << "  Loaded flowers sprite sheet" << std::endl;
+//flowers.png has pink background - apply comprehensive color keying
+            ApplyMultipleColorKeys(flowersSheet);  //use multi-key to catch all backgrounds
+            ApplyColorKey(flowersSheet, 255, 192, 203, 50);  //light pink - higher tolerance
+            ApplyColorKey(flowersSheet, 255, 182, 193, 50);  //another pink variant
+        }
+        
+//create animation films from sprite sheets
         CreateAnimationFilms();
         
         loaded = true;
@@ -201,7 +229,7 @@ public:
     void CreateAnimationFilms() {
         auto& filmHolder = engine::AnimationFilmHolder::Instance();
         
-        // Helper lambda to add animation
+//helper lambda to add animation
         auto addAnim = [&](const AnimationDef& anim, engine::BitmapPtr sheet) {
             std::vector<engine::Rect> frames;
             for (const auto& fr : anim.frames) {
@@ -217,100 +245,113 @@ public:
         }
         
         std::cout << "  Creating Enemy animations..." << std::endl;
-        // Motobug
+//motobug
         for (const auto& anim : EnemySpriteConfig::GetMotobugAnimations()) {
             addAnim(anim, enemiesSheet);
         }
-        // Crabmeat
+//crabmeat
         for (const auto& anim : EnemySpriteConfig::GetCrabmeatAnimations()) {
             addAnim(anim, enemiesSheet);
         }
-        // BuzzBomber
+//buzzBomber
         for (const auto& anim : EnemySpriteConfig::GetBuzzBomberAnimations()) {
             addAnim(anim, enemiesSheet);
         }
-        // Masher
+//masher
         for (const auto& anim : EnemySpriteConfig::GetMasherAnimations()) {
             addAnim(anim, enemiesSheet);
         }
-        // Newtron Blue
+//newtron Blue
         for (const auto& anim : EnemySpriteConfig::GetNewtronBlueAnimations()) {
             addAnim(anim, enemiesSheet);
         }
-        // Newtron Green
+//newtron Green
         for (const auto& anim : EnemySpriteConfig::GetNewtronGreenAnimations()) {
             addAnim(anim, enemiesSheet);
         }
-        // Bomb
+//bomb
         for (const auto& anim : EnemySpriteConfig::GetBombAnimations()) {
             addAnim(anim, enemiesSheet);
         }
-        // Caterkiller
+//caterkiller
         for (const auto& anim : EnemySpriteConfig::GetCaterkillerAnimations()) {
             addAnim(anim, enemiesSheet);
         }
-        // Spikes enemy (Yadorin)
+//spikes enemy (Yadorin)
         for (const auto& anim : EnemySpriteConfig::GetSpikesEnemyAnimations()) {
             addAnim(anim, enemiesSheet);
         }
-        // Batbrain
+//batbrain
         for (const auto& anim : EnemySpriteConfig::GetBatbrainAnimations()) {
             addAnim(anim, enemiesSheet);
         }
-        // Burrobot
+//burrobot
         for (const auto& anim : EnemySpriteConfig::GetBurrobotAnimations()) {
             addAnim(anim, enemiesSheet);
         }
-        // Roller
+//roller
         for (const auto& anim : EnemySpriteConfig::GetRollerAnimations()) {
             addAnim(anim, enemiesSheet);
         }
-        // Jaws
+//jaws
         for (const auto& anim : EnemySpriteConfig::GetJawsAnimations()) {
             addAnim(anim, enemiesSheet);
         }
-        // Orbinaut
+//orbinaut
         for (const auto& anim : EnemySpriteConfig::GetOrbinautAnimations()) {
             addAnim(anim, enemiesSheet);
         }
-        // BallHog
+//ballHog
         for (const auto& anim : EnemySpriteConfig::GetBallHogAnimations()) {
             addAnim(anim, enemiesSheet);
         }
-        // Explosion
+//explosion
         addAnim(EnemySpriteConfig::GetExplosionAnimation(), enemiesSheet);
         
         std::cout << "  Creating Misc animations..." << std::endl;
-        // Ring
+//ring
         addAnim(MiscSpriteConfig::GetRingAnimation(), miscSheet);
         addAnim(MiscSpriteConfig::GetRingCollectAnimation(), miscSheet);
-        // Big Ring
+//big Ring
         addAnim(MiscSpriteConfig::GetBigRingAnimation(), miscSheet);
-        // Invincibility
+//invincibility
         addAnim(MiscSpriteConfig::GetInvincibilityAnimation(), miscSheet);
-        // Shield
+//shield
         addAnim(MiscSpriteConfig::GetShieldAnimation(), miscSheet);
-        // Checkpoint
+//checkpoint
         addAnim(MiscSpriteConfig::GetCheckpointAnimation(), miscSheet);
-        // Springs
+//springs
         addAnim(MiscSpriteConfig::GetYellowSpringAnimation(), miscSheet);
         addAnim(MiscSpriteConfig::GetRedSpringAnimation(), miscSheet);
-        // Ring loss
+        addAnim(MiscSpriteConfig::GetSideSpringAnimation(), miscSheet);
+//ring loss
         addAnim(MiscSpriteConfig::GetRingLossAnimation(), miscSheet);
         
+//flowers (decorative - from flowers.png sheet)
+        std::cout << "  Creating Flower animations (from flowers.png)..." << std::endl;
+        if (flowersSheet) {
+            addAnim(TileConfig::GetFlowerTallAnimation(), flowersSheet);
+            addAnim(TileConfig::GetFlowerShortAnimation(), flowersSheet);
+        } else {
+            std::cerr << "  Warning: flowers.png not loaded, using tiles sheet fallback" << std::endl;
+            addAnim(TileConfig::GetFlowerTallAnimation(), tilesSheet);
+            addAnim(TileConfig::GetFlowerShortAnimation(), tilesSheet);
+        }
+        
         std::cout << "  Creating Animal animations..." << std::endl;
-        // All animals
+//all animals - loaded from animals sheet (animals_fixed.png)
         addAnim(AnimalSpriteConfig::GetFlickyAnimation(), animalsSheet);
         addAnim(AnimalSpriteConfig::GetPockyAnimation(), animalsSheet);
         addAnim(AnimalSpriteConfig::GetCuckyAnimation(), animalsSheet);
         addAnim(AnimalSpriteConfig::GetRickyAnimation(), animalsSheet);
         addAnim(AnimalSpriteConfig::GetPeckyAnimation(), animalsSheet);
         addAnim(AnimalSpriteConfig::GetRockyAnimation(), animalsSheet);
+        addAnim(AnimalSpriteConfig::GetPickyAnimation(), animalsSheet);  //new: Picky pig
         
         std::cout << "  Animation films created!" << std::endl;
     }
     
-    // Getters
+//getters
     engine::BitmapPtr GetSonicSheet() const { return sonicSheet; }
     engine::BitmapPtr GetEnemiesSheet() const { return enemiesSheet; }
     engine::BitmapPtr GetMiscSheet() const { return miscSheet; }
@@ -325,18 +366,18 @@ public:
     bool IsLoaded() const { return loaded; }
     
     void Cleanup() {
-        // BitmapPtr are shared_ptr so they clean up automatically
         sonicSheet = nullptr;
         enemiesSheet = nullptr;
         miscSheet = nullptr;
         animalsSheet = nullptr;
         tilesSheet = nullptr;
         backgroundSheet = nullptr;
+        flowersSheet = nullptr;
         films.clear();
         loaded = false;
     }
 };
 
-} // namespace app
+}  //namespace app
 
-#endif // RESOURCE_MANAGER_HPP
+#endif  //RESOURCE_MANAGER_HPP

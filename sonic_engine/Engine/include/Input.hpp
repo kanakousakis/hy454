@@ -7,24 +7,24 @@
 
 namespace engine {
 
-// Key codes matching common game controls
+//key codes matching common game controls
 enum class KeyCode {
     Unknown = -1,
-    // Arrow keys
+//arrow keys
     Left, Right, Up, Down,
-    // Letters
+//letters
     A, B, C, D, E, F, G, H, I, J, K, L, M,
     N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
-    // Numbers
+//numbers
     Num0, Num1, Num2, Num3, Num4, Num5, Num6, Num7, Num8, Num9,
-    // Function keys
+//function keys
     F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
-    // Special keys
+//special keys
     Space, Enter, Escape, Tab, Backspace,
     LShift, RShift, LCtrl, RCtrl, LAlt, RAlt,
     Home, End, PageUp, PageDown, Insert, Delete,
     Plus, Minus, Equals, Period, Comma,
-    // Count
+//count
     KeyCount
 };
 
@@ -33,7 +33,7 @@ enum class MouseButton {
     ButtonCount
 };
 
-// Input manager - singleton
+//input manager - singleton
 class InputManager {
 private:
     static InputManager* instance;
@@ -55,31 +55,31 @@ private:
 public:
     static InputManager& Instance();
     
-    void Poll();      // Process SFML events
-    void Update();    // Update previous state (call at frame end)
+    void Poll();  //process SFML events
+    void Update();
     
-    // Keyboard
+//keyboard
     bool IsKeyPressed(KeyCode key) const;
     bool IsKeyJustPressed(KeyCode key) const;
     bool IsKeyJustReleased(KeyCode key) const;
     
-    // Mouse
+//mouse
     bool IsMousePressed(MouseButton btn) const;
     bool IsMouseJustPressed(MouseButton btn) const;
     bool IsMouseJustReleased(MouseButton btn) const;
     Point GetMousePosition() const { return mousePos; }
     Point GetMouseDelta() const { return mouseDelta; }
     
-    // Window
+//window
     bool IsWindowClosed() const { return windowClosed; }
     void ResetWindowClosed() { windowClosed = false; }
 };
 
-// Convenience functions
+//convenience functions
 inline InputManager& GetInput() { return InputManager::Instance(); }
 
 inline bool IsKeyPressed(KeyCode key) { return GetInput().IsKeyPressed(key); }
 inline bool IsKeyJustPressed(KeyCode key) { return GetInput().IsKeyJustPressed(key); }
 inline bool IsKeyJustReleased(KeyCode key) { return GetInput().IsKeyJustReleased(key); }
 
-} // namespace engine
+}  //namespace engine

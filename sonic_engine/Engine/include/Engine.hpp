@@ -1,50 +1,50 @@
 #pragma once
 
-// Core types
+//core types
 #include "Types.hpp"
 #include "TileConstants.hpp"
 #include "SystemClock.hpp"
 
-// Graphics
+//graphics
 #include "Bitmap.hpp"
 
-// Input
+//input
 #include "Input.hpp"
 
-// Terrain
+//terrain
 #include "TileLayer.hpp"
 #include "GridLayer.hpp"
 
-// Animation
+//animation
 #include "Animation.hpp"
 #include "AnimationFilm.hpp"
 #include "Animator.hpp"
 
-// Sprite system
+//sprite system
 #include "Sprite.hpp"
 
-// Memory management
+//memory management
 #include "DestructionManager.hpp"
 
-// Game
+//game
 #include "Game.hpp"
 
 namespace engine {
 
-// Initialize the engine
+//initialize the engine
 inline bool EngineInit(Dim width, Dim height, const std::string& title = "Sonic Engine") {
     return Graphics::Instance().Init(width, height, title);
 }
 
-// Shutdown the engine
+//shutdown the engine
 inline void EngineShutdown() {
     Graphics::Instance().Shutdown();
 }
 
-// Check if engine should quit
+//check if engine should quit
 inline bool EngineShouldQuit() {
     return InputManager::Instance().IsWindowClosed() || 
            !Graphics::Instance().IsOpen();
 }
 
-} // namespace engine
+}  //namespace engine

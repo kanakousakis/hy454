@@ -6,13 +6,13 @@
 
 namespace engine {
 
-// Forward declaration
+//forward declaration
 class DestructionManager;
 
-// ============================================================================
-// LatelyDestroyable (from lectures Section 14.1)
-// Base class for objects that need deferred destruction
-// ============================================================================
+//============================================================================
+//latelyDestroyable (from lectures Section 14.1)
+//base class for objects that need deferred destruction
+//============================================================================
 class LatelyDestroyable {
 protected:
     friend class DestructionManager;
@@ -30,15 +30,15 @@ protected:
 public:
     bool IsAlive() const { return alive; }
     
-    void Destroy();  // Marks for destruction, actual delete happens in Commit()
+    void Destroy();  //marks for destruction, actual delete happens in Commit()
     
     LatelyDestroyable() = default;
 };
 
-// ============================================================================
-// DestructionManager (from lectures Section 14.1)
-// Singleton that manages deferred destruction of game objects
-// ============================================================================
+//============================================================================
+//destructionManager (from lectures Section 14.1)
+//singleton that manages deferred destruction of game objects
+//============================================================================
 class DestructionManager {
 private:
     std::list<LatelyDestroyable*> dead;
@@ -65,10 +65,10 @@ public:
     size_t GetPendingCount() const { return dead.size(); }
 };
 
-// ============================================================================
-// Recycled (from lectures Section 14.2)
-// Template for object pooling / recycling
-// ============================================================================
+//============================================================================
+//recycled (from lectures Section 14.2)
+//template for object pooling / recycling
+//============================================================================
 template <class T>
 class Recycled {
 protected:
@@ -109,6 +109,6 @@ public:
 template <class T>
 std::list<T*> Recycled<T>::recycler;
 
-} // namespace engine
+}  //namespace engine
 
-#endif // ENGINE_DESTRUCTION_MANAGER_HPP
+#endif  //ENGINE_DESTRUCTION_MANAGER_HPP

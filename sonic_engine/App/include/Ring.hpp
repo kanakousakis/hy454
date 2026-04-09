@@ -10,10 +10,10 @@ namespace app {
 class Ring {
 public:
     enum class State {
-        Static,     // Placed in level, waiting to be collected
-        Scattered,  // Dropped from player, bouncing
-        Collected,  // Being collected (animation)
-        Gone        // Ready for deletion
+        Static,  //placed in level, waiting to be collected
+        Scattered,  //dropped from player, bouncing
+        Collected,  //being collected (animation)
+        Gone  //ready for deletion
     };
 
 private:
@@ -24,30 +24,30 @@ private:
     
     State state = State::Static;
     
-    // Animation
+//animation
     int currentFrame = 0;
     uint64_t lastFrameTime = 0;
     static constexpr int FRAME_COUNT = 4;
-    static constexpr uint64_t FRAME_DELAY = 100;  // ms
+    static constexpr uint64_t FRAME_DELAY = 100;  //ms
     
-    // Scattered state
+//scattered state
     uint64_t scatterStartTime = 0;
-    static constexpr uint64_t SCATTER_LIFETIME = 4000;  // 4 seconds
-    static constexpr uint64_t BLINK_START = 2500;       // Start blinking at 2.5s
+    static constexpr uint64_t SCATTER_LIFETIME = 4000;  //4 seconds
+    static constexpr uint64_t BLINK_START = 2500;  //start blinking at 2.5s
     bool isVisible = true;
     int blinkCounter = 0;
     
-    // Physics for scattered rings
+//physics for scattered rings
     static constexpr float GRAVITY = 0.25f;
     static constexpr float BOUNCE = -0.75f;
-    static constexpr float FLOOR_Y = 1000.0f;  // Set by caller
+    static constexpr float FLOOR_Y = 1000.0f;  //set by caller
     float floorY = FLOOR_Y;
     
-    // Collision box
+//collision box
     static constexpr int WIDTH = 16;
     static constexpr int HEIGHT = 16;
     
-    // Grid for ground detection
+//grid for ground detection
     engine::GridLayer* gridLayer = nullptr;
 
 public:
@@ -58,12 +58,16 @@ public:
         if (state == State::Scattered) {
             scatterStartTime = lastFrameTime;
         }
+        //randomize initial animation frame to prevent synchronized animations
+        currentFrame = rand() % FRAME_COUNT;
+        //offset lastFrameTime randomly so frames don't all change together
+        lastFrameTime -= (rand() % FRAME_DELAY);
     }
     
     void SetGridLayer(engine::GridLayer* grid) { gridLayer = grid; }
     void SetFloorY(float y) { floorY = y; }
     
-    // Create a scattered ring with velocity
+//create a scattered ring with velocity
     static Ring CreateScattered(float x, float y, float vx, float vy) {
         Ring r(x, y, State::Scattered);
         r.velX = vx;
@@ -75,19 +79,19 @@ public:
     void Update() {
         uint64_t now = engine::GetSystemTime();
         
-        // Animate
+//animate
         if (now - lastFrameTime >= FRAME_DELAY) {
             currentFrame = (currentFrame + 1) % FRAME_COUNT;
             lastFrameTime = now;
         }
         
         if (state == State::Scattered) {
-            // Apply physics
+//apply physics
             velY += GRAVITY;
             posX += velX;
             posY += velY;
             
-            // Bounce off floor
+//bounce off floor
             if (gridLayer) {
                 engine::Rect box = GetBoundingBox();
                 int dy = static_cast<int>(velY);
@@ -98,7 +102,7 @@ public:
                     if (dy < static_cast<int>(velY)) {
                         posY = posY - velY + dy;
                         velY *= BOUNCE;
-                        velX *= 0.9f;  // Friction
+                        velX *= 0.9f;  //friction
                         
                         if (std::abs(velY) < 1.0f) {
                             velY = 0;
@@ -112,7 +116,7 @@ public:
                 if (std::abs(velY) < 1.0f) velY = 0;
             }
             
-            // Wall collision
+//wall collision
             if (gridLayer) {
                 engine::Rect box = GetBoundingBox();
                 int dx = static_cast<int>(velX);
@@ -123,22 +127,22 @@ public:
                 }
             }
             
-            // Blinking when about to disappear
+//blinking when about to disappear
             uint64_t elapsed = now - scatterStartTime;
             if (elapsed >= BLINK_START) {
                 blinkCounter++;
                 isVisible = (blinkCounter / 3) % 2 == 0;
             }
             
-            // Lifetime expired
+//lifetime expired
             if (elapsed >= SCATTER_LIFETIME) {
                 state = State::Gone;
             }
         }
         else if (state == State::Collected) {
-            // Float upward and fade
+//float upward and fade
             posY -= 2.0f;
-            // After a short delay, mark as gone
+//after a short delay, mark as gone
             if (now - scatterStartTime >= 300) {
                 state = State::Gone;
             }
@@ -155,7 +159,7 @@ public:
     bool CanBeCollected() const {
         if (state == State::Static) return true;
         if (state == State::Scattered) {
-            // Grace period - can't collect scattered rings for first 500ms
+//grace period - can't collect scattered rings for first 500ms
             uint64_t elapsed = engine::GetSystemTime() - scatterStartTime;
             return elapsed > 500;
         }
@@ -188,7 +192,7 @@ public:
     }
     
     void Render(const engine::Rect& viewWindow, engine::AnimationFilm* ringFilm = nullptr,
-                engine::AnimationFilm* collectFilm = nullptr) {
+                engine::AnimationFilm* collectFilm = nullptr, float scale = 1.0f) {
         if (!isVisible && state == State::Scattered) return;
         if (state == State::Gone) return;
         
@@ -197,25 +201,29 @@ public:
         int screenX = static_cast<int>(posX) - viewWindow.x;
         int screenY = static_cast<int>(posY) - viewWindow.y;
         
-        // Skip if off screen
-        if (screenX + WIDTH < 0 || screenX > viewWindow.w ||
-            screenY + HEIGHT < 0 || screenY > viewWindow.h) {
+//scaled dimensions
+        int scaledW = static_cast<int>(WIDTH * scale);
+        int scaledH = static_cast<int>(HEIGHT * scale);
+        
+//skip if off screen
+        if (screenX + scaledW < 0 || screenX > viewWindow.w ||
+            screenY + scaledH < 0 || screenY > viewWindow.h) {
             return;
         }
         
-        // Use collect animation for collected state
+//use collect animation for collected state
         if (state == State::Collected && collectFilm && collectFilm->GetTotalFrames() > 0) {
             int frameIdx = currentFrame % collectFilm->GetTotalFrames();
-            collectFilm->DisplayFrame({screenX, screenY}, static_cast<engine::byte>(frameIdx));
+            collectFilm->DisplayFrameScaled({screenX, screenY}, static_cast<engine::byte>(frameIdx), scale);
             return;
         }
         
-        // Try to use sprite if available
+//try to use sprite if available
         if (ringFilm && ringFilm->GetTotalFrames() > 0) {
             int frameIdx = currentFrame % ringFilm->GetTotalFrames();
-            ringFilm->DisplayFrame({screenX, screenY}, static_cast<engine::byte>(frameIdx));
+            ringFilm->DisplayFrameScaled({screenX, screenY}, static_cast<engine::byte>(frameIdx), scale);
         } else {
-            // Fallback: Draw placeholder ring
+//fallback: Draw placeholder ring
             engine::Color ringColor;
             if (state == State::Collected) {
                 ringColor = engine::MakeColor(255, 255, 200, 150);
@@ -224,17 +232,18 @@ public:
                 ringColor = engine::MakeColor(255, static_cast<unsigned char>(brightness), 0);
             }
             
-            // Simple ring representation
-            gfx.DrawRect({screenX, screenY, WIDTH, HEIGHT}, ringColor, true);
-            gfx.DrawRect({screenX + 4, screenY + 4, WIDTH - 8, HEIGHT - 8}, 
+//simple ring representation - scaled
+            gfx.DrawRect({screenX, screenY, scaledW, scaledH}, ringColor, true);
+            gfx.DrawRect({screenX + static_cast<int>(4*scale), screenY + static_cast<int>(4*scale), 
+                         scaledW - static_cast<int>(8*scale), scaledH - static_cast<int>(8*scale)}, 
                          engine::MakeColor(135, 206, 235), true);
-            gfx.DrawRect({screenX, screenY, WIDTH, HEIGHT}, 
+            gfx.DrawRect({screenX, screenY, scaledW, scaledH}, 
                          engine::MakeColor(200, 150, 0), false);
         }
     }
 };
 
-// Ring manager to handle multiple rings
+//ring manager to handle multiple rings
 class RingManager {
 private:
     std::vector<Ring> rings;
@@ -260,24 +269,24 @@ public:
     }
     
     void ScatterRings(float centerX, float centerY, int count) {
-        // Create rings in double circle pattern
+//create rings in double circle pattern
         const float PI = 3.14159265f;
         int innerCount = std::min(count, 16);
         int outerCount = count - innerCount;
         
-        // Inner circle
+//inner circle
         for (int i = 0; i < innerCount; ++i) {
             float angle = (2.0f * PI * i) / innerCount;
             float speed = 3.0f + (rand() % 20) / 10.0f;
             float vx = std::cos(angle) * speed;
-            float vy = std::sin(angle) * speed - 4.0f;  // Upward bias
+            float vy = std::sin(angle) * speed - 4.0f;  //upward bias
             
             Ring ring = Ring::CreateScattered(centerX, centerY, vx, vy);
             ring.SetGridLayer(gridLayer);
             rings.push_back(ring);
         }
         
-        // Outer circle (if more than 16 rings)
+//outer circle (if more than 16 rings)
         for (int i = 0; i < outerCount; ++i) {
             float angle = (2.0f * PI * i) / outerCount + PI / outerCount;
             float speed = 4.0f + (rand() % 20) / 10.0f;
@@ -295,7 +304,7 @@ public:
             ring.Update();
         }
         
-        // Remove gone rings
+//remove gone rings
         rings.erase(
             std::remove_if(rings.begin(), rings.end(),
                 [](const Ring& r) { return r.IsGone(); }),
@@ -303,7 +312,7 @@ public:
         );
     }
     
-    // Check collision with player and collect rings
+//check collision with player and collect rings
     int CheckCollision(const engine::Rect& playerBox) {
         int collected = 0;
         for (auto& ring : rings) {
@@ -319,9 +328,14 @@ public:
     }
     
     void Render(const engine::Rect& viewWindow, engine::AnimationFilm* ringFilm = nullptr,
-                engine::AnimationFilm* collectFilm = nullptr) {
+                engine::AnimationFilm* collectFilm = nullptr, float scale = 1.0f) {
         for (auto& ring : rings) {
-            ring.Render(viewWindow, ringFilm, collectFilm);
+            float rx = ring.GetX();
+            float ry = ring.GetY();
+            if (rx >= viewWindow.x - 200 && rx <= viewWindow.x + viewWindow.w + 200 &&
+                ry >= viewWindow.y - 200 && ry <= viewWindow.y + viewWindow.h + 200) {
+                ring.Render(viewWindow, ringFilm, collectFilm, scale);
+            }
         }
     }
     
@@ -329,6 +343,6 @@ public:
     int GetCount() const { return static_cast<int>(rings.size()); }
 };
 
-} // namespace app
+}  //namespace app
 
-#endif // RING_HPP
+#endif  //RING_HPP
